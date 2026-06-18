@@ -1,0 +1,32 @@
+# Node modules
+**/node_modules/
+**/dist/
+
+# Python Virtual Environment and caches
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
+
+# Generated test/temp/lock files
+**/~$*.pptx
+**/*.log
+*.png
+*.pptx
+
+# Force tracking of template and logo assets
+!backend/Templet/Internal Audit Executive Summary  Methodology.pptx
+!frontend/public/*.png
