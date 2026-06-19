@@ -84,7 +84,7 @@ function App() {
 
     const timelineStart = formatDate(getVal(['timeline_start', 'timeline_start_date', 'timelineStart', 'start_date']));
     const timelineEnd = formatDate(getVal(['timeline_end', 'timeline_end_date', 'timelineEnd', 'end_date']));
-    
+
     // Fallback logic if specific audit_plan / report_name columns are empty or not in DB schema
     const titleVal = getVal(['title']);
     const processVal = getVal(['process']);
@@ -186,12 +186,12 @@ function App() {
     setCurrentLabelText('Estimated time remaining: <b>10–12 minutes</b>');
 
     const phases = [
-      { target: 20,  label: 'Estimated time remaining: <b>10–12 minutes</b>', status: 'Loading audit records...' },
-      { target: 40,  label: 'Estimated time remaining: <b>8–10 minutes</b>',  status: 'Analyzing exception logs...' },
-      { target: 60,  label: 'Estimated time remaining: <b>5–7 minutes</b>',   status: 'Running AI synthesis engine...' },
-      { target: 80,  label: 'Estimated time remaining: <b>2–4 minutes</b>',   status: 'Generating executive summary...' },
-      { target: 95,  label: 'Estimated time remaining: <b>Under 1 minute</b>',status: 'Finalizing report layout...' },
-      { target: 100, label: 'Report generation complete!',                     status: 'Report ready ✓' },
+      { target: 20, label: 'Estimated time remaining: <b>10–12 minutes</b>', status: 'Loading audit records...' },
+      { target: 40, label: 'Estimated time remaining: <b>8–10 minutes</b>', status: 'Analyzing exception logs...' },
+      { target: 60, label: 'Estimated time remaining: <b>5–7 minutes</b>', status: 'Running AI synthesis engine...' },
+      { target: 80, label: 'Estimated time remaining: <b>2–4 minutes</b>', status: 'Generating executive summary...' },
+      { target: 95, label: 'Estimated time remaining: <b>Under 1 minute</b>', status: 'Finalizing report layout...' },
+      { target: 100, label: 'Report generation complete!', status: 'Report ready ✓' },
     ];
 
     let current = 0;
