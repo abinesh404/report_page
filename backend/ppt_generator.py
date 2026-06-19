@@ -854,144 +854,144 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
             replace_text_in_shape(shape, shape.text_frame.text, 
                                   f"{max_process} represents the largest volume of findings, driving the primary narrative and remediation focus for the remainder of the fiscal year.")
 
-    # Create Key Observations & Detailed Observation slides if Detailed Findings Report
+    # Create Key Observations & Detailed Observation slides
     key_obs_slide_ids = []
     detailed_slide_ids = []
     
-    if report_type == "Detailed Findings Report" or include_exceptions:
-        # Recommendations mapping
-        recommendations = {
-            "bank_account_changed": "Implement dual-authorization controls for vendor bank master data changes and callback verification.",
-            "cjs1_quality_rejected": "Strengthen SAP gatekeeping controls to block issuing quality-rejected raw materials to production.",
-            "cjsa22_foc_discount": "Standardize the approval matrix for Free-of-Cost (FOC) sales and configure automated blocks for unauthorized discounts.",
-            "cjsa23_sales_return_qty": "Establish automated batch validation checks to prevent sales return quantities from exceeding original quantity.",
-            "direct_changes_sap": "Restrict direct tables edit permissions in SAP production and implement continuous activity logging.",
-            "duplicate_customers": "Establish a customer master cleansing process and activate duplicate checks during customer creation.",
-            "finished_goods_dispatched_wo_qi": "Enforce validation rules in ERP to prevent dispatching finished goods without approved QI certificate.",
-            "gst_working": "Perform monthly automated reconciliations of ITC between GSTR-2B and purchase registers.",
-            "mjot06_yield_loss": "Standardize bill of materials (BOM) formulas and perform daily variance analysis on production yield losses.",
-            "multiple_sales_return": "Configure system controls to restrict duplicate sales return references against a single invoice.",
-            "password_test": "Enforce strong password complexity rules, MFA, and mandatory 90-day password rotation policies.",
-            "po_split": "Implement purchase order aggregation controls and monitor split PO behaviors using analytics.",
-            "po_terms_changed": "Enforce systemic locks on purchase orders once GRN is posted, requiring VP approval for any post-GRN amendments.",
-            "procurement_higher_contract": "Activate system checks in SAP to block purchase orders with prices exceeding contractually agreed rates.",
-            "reorder_level": "Automate reorder trigger warnings in ERP based on real-time inventory levels to prevent premature procurement.",
-            "sales_return_180": "Enforce system validation to block sales return claims initiated after 180 days from original invoice date.",
-            "sales_return_im": "Investigate immediate sales returns (same day) and require formal reasons for all return authorizations.",
-            "sales_return_price_mismatch": "Configure SAP price tolerance limits to reject sales return credits priced higher than selling price.",
-            "scrap_sales": "Establish competitive bidding and periodic vendor audits for scrap sales, reconciling weighbridge slips.",
-            "sjin13_unplanned_delivery": "Enforce strict tolerance thresholds in SAP (max 5%) for unplanned delivery costs, requiring VP approval.",
-            "sjpa7_msme_penalty": "Optimize MSME payment workflows to ensure invoice processing and payments occur within statutory 45 days.",
-            "tds_insight": "Automate TDS tax rate validation against vendor PAN database to ensure compliance and avoid incorrect withholding."
-        }
+    # Recommendations mapping
+    recommendations = {
+        "bank_account_changed": "Implement dual-authorization controls for vendor bank master data changes and callback verification.",
+        "cjs1_quality_rejected": "Strengthen SAP gatekeeping controls to block issuing quality-rejected raw materials to production.",
+        "cjsa22_foc_discount": "Standardize the approval matrix for Free-of-Cost (FOC) sales and configure automated blocks for unauthorized discounts.",
+        "cjsa23_sales_return_qty": "Establish automated batch validation checks to prevent sales return quantities from exceeding original quantity.",
+        "direct_changes_sap": "Restrict direct tables edit permissions in SAP production and implement continuous activity logging.",
+        "duplicate_customers": "Establish a customer master cleansing process and activate duplicate checks during customer creation.",
+        "finished_goods_dispatched_wo_qi": "Enforce validation rules in ERP to prevent dispatching finished goods without approved QI certificate.",
+        "gst_working": "Perform monthly automated reconciliations of ITC between GSTR-2B and purchase registers.",
+        "mjot06_yield_loss": "Standardize bill of materials (BOM) formulas and perform daily variance analysis on production yield losses.",
+        "multiple_sales_return": "Configure system controls to restrict duplicate sales return references against a single invoice.",
+        "password_test": "Enforce strong password complexity rules, MFA, and mandatory 90-day password rotation policies.",
+        "po_split": "Implement purchase order aggregation controls and monitor split PO behaviors using analytics.",
+        "po_terms_changed": "Enforce systemic locks on purchase orders once GRN is posted, requiring VP approval for any post-GRN amendments.",
+        "procurement_higher_contract": "Activate system checks in SAP to block purchase orders with prices exceeding contractually agreed rates.",
+        "reorder_level": "Automate reorder trigger warnings in ERP based on real-time inventory levels to prevent premature procurement.",
+        "sales_return_180": "Enforce system validation to block sales return claims initiated after 180 days from original invoice date.",
+        "sales_return_im": "Investigate immediate sales returns (same day) and require formal reasons for all return authorizations.",
+        "sales_return_price_mismatch": "Configure SAP price tolerance limits to reject sales return credits priced higher than selling price.",
+        "scrap_sales": "Establish competitive bidding and periodic vendor audits for scrap sales, reconciling weighbridge slips.",
+        "sjin13_unplanned_delivery": "Enforce strict tolerance thresholds in SAP (max 5%) for unplanned delivery costs, requiring VP approval.",
+        "sjpa7_msme_penalty": "Optimize MSME payment workflows to ensure invoice processing and payments occur within statutory 45 days.",
+        "tds_insight": "Automate TDS tax rate validation against vendor PAN database to ensure compliance and avoid incorrect withholding."
+    }
+    
+    # Get active observations (count > 0)
+    active_obs = []
+    for t_name, count in table_counts.items():
+        if count > 0:
+            id_val = table_to_id[t_name]
+            meta = id_to_meta.get(id_val)
+            if meta:
+                active_obs.append({
+                    "insight_name": meta["insight_name"],
+                    "recommendation": recommendations.get(t_name, "Review process validation rules."),
+                    "management_response": table_comments.get(t_name, "No management response recorded."),
+                    "table_name": t_name
+                })
+                
+    # Key Observations Slide splitting (max 4 per slide)
+    key_obs_chunks = [active_obs[i:i + 4] for i in range(0, len(active_obs), 4)]
+    for chunk_idx, chunk in enumerate(key_obs_chunks):
+        target_slide = duplicate_slide(prs, slide6)
+        key_obs_slide_ids.append(prs.slides._sldIdLst[-1])
         
-        # Get active observations (count > 0)
-        active_obs = []
-        for t_name, count in table_counts.items():
-            if count > 0:
-                id_val = table_to_id[t_name]
-                meta = id_to_meta.get(id_val)
-                if meta:
-                    active_obs.append({
-                        "insight_name": meta["insight_name"],
-                        "recommendation": recommendations.get(t_name, "Review process validation rules."),
-                        "management_response": table_comments.get(t_name, "No management response recorded."),
-                        "table_name": t_name
-                    })
-                    
-        # Key Observations Slide splitting (max 4 per slide)
-        key_obs_chunks = [active_obs[i:i + 4] for i in range(0, len(active_obs), 4)]
-        for chunk_idx, chunk in enumerate(key_obs_chunks):
-            target_slide = duplicate_slide(prs, slide6)
-            key_obs_slide_ids.append(prs.slides._sldIdLst[-1])
-            
-            for shape in target_slide.shapes:
-                if shape.has_text_frame and "Summary of Key Findings" in shape.text_frame.text:
-                    shape.text_frame.clear()
-                    p = shape.text_frame.paragraphs[0]
-                    run = p.add_run()
-                    title_text = "Key Observations"
-                    if len(key_obs_chunks) > 1:
-                        title_text += f" ({chunk_idx + 1}/{len(key_obs_chunks)})"
-                    run.text = title_text
-                    run.font.name = "Inter"
-                    run.font.size = Pt(22)
-                    run.font.bold = True
-                    run.font.color.rgb = RGBColor(30, 41, 59)
-                    
-            if include_exceptions:
-                cols_count = 3
-                widths = [Pt(200), Pt(380), Pt(284)]
-                headers = ["Insight Name", "Recommendation", "Management Response"]
-            else:
-                cols_count = 2
-                widths = [Pt(240), Pt(624)]
-                headers = ["Insight Name", "Recommendation"]
-
-            table_height = Pt(30) + len(chunk) * Pt(45)
-            table_shape = target_slide.shapes.add_table(len(chunk) + 1, cols_count, Pt(48), Pt(112), Pt(864), table_height)
-            table = table_shape.table
-            for col_idx, w in enumerate(widths):
-                table.columns[col_idx].width = w
-            
-            for col_idx, text in enumerate(headers):
-                cell = table.cell(0, col_idx)
-                cell.text = text
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = RGBColor(30, 41, 59)
-                p = cell.text_frame.paragraphs[0]
-                p.alignment = PP_ALIGN.LEFT
-                run = p.runs[0]
+        for shape in target_slide.shapes:
+            if shape.has_text_frame and "Summary of Key Findings" in shape.text_frame.text:
+                shape.text_frame.clear()
+                p = shape.text_frame.paragraphs[0]
+                run = p.add_run()
+                title_text = "Key Observations"
+                if len(key_obs_chunks) > 1:
+                    title_text += f" ({chunk_idx + 1}/{len(key_obs_chunks)})"
+                run.text = title_text
                 run.font.name = "Inter"
-                run.font.size = Pt(10)
-                run.font.bold = True
-                run.font.color.rgb = RGBColor(255, 255, 255)
-                cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-                cell.margin_left = Pt(10)
-                cell.margin_right = Pt(10)
-                
-            for row_idx, obs in enumerate(chunk):
-                row = row_idx + 1
-                bg_color = RGBColor(255, 255, 255) if row % 2 == 1 else RGBColor(248, 250, 252)
-                
-                c_name = table.cell(row, 0)
-                c_name.text = str(obs["insight_name"])
-                c_name.fill.solid()
-                c_name.fill.fore_color.rgb = bg_color
-                p = c_name.text_frame.paragraphs[0]
-                run = p.runs[0]
-                run.font.name = "Inter"
-                run.font.size = Pt(9)
+                run.font.size = Pt(22)
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(30, 41, 59)
-                c_name.vertical_anchor = MSO_ANCHOR.MIDDLE
-                c_name.margin_left = Pt(10)
                 
-                c_rec = table.cell(row, 1)
-                c_rec.text = str(obs["recommendation"])
-                c_rec.fill.solid()
-                c_rec.fill.fore_color.rgb = bg_color
-                p = c_rec.text_frame.paragraphs[0]
+        if include_exceptions:
+            cols_count = 3
+            widths = [Pt(200), Pt(380), Pt(284)]
+            headers = ["Insight Name", "Recommendation", "Management Response"]
+        else:
+            cols_count = 2
+            widths = [Pt(240), Pt(624)]
+            headers = ["Insight Name", "Recommendation"]
+
+        table_height = Pt(30) + len(chunk) * Pt(45)
+        table_shape = target_slide.shapes.add_table(len(chunk) + 1, cols_count, Pt(48), Pt(112), Pt(864), table_height)
+        table = table_shape.table
+        for col_idx, w in enumerate(widths):
+            table.columns[col_idx].width = w
+        
+        for col_idx, text in enumerate(headers):
+            cell = table.cell(0, col_idx)
+            cell.text = text
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor(30, 41, 59)
+            p = cell.text_frame.paragraphs[0]
+            p.alignment = PP_ALIGN.LEFT
+            run = p.runs[0]
+            run.font.name = "Inter"
+            run.font.size = Pt(10)
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(255, 255, 255)
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.margin_left = Pt(10)
+            cell.margin_right = Pt(10)
+            
+        for row_idx, obs in enumerate(chunk):
+            row = row_idx + 1
+            bg_color = RGBColor(255, 255, 255) if row % 2 == 1 else RGBColor(248, 250, 252)
+            
+            c_name = table.cell(row, 0)
+            c_name.text = str(obs["insight_name"])
+            c_name.fill.solid()
+            c_name.fill.fore_color.rgb = bg_color
+            p = c_name.text_frame.paragraphs[0]
+            run = p.runs[0]
+            run.font.name = "Inter"
+            run.font.size = Pt(9)
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(30, 41, 59)
+            c_name.vertical_anchor = MSO_ANCHOR.MIDDLE
+            c_name.margin_left = Pt(10)
+            
+            c_rec = table.cell(row, 1)
+            c_rec.text = str(obs["recommendation"])
+            c_rec.fill.solid()
+            c_rec.fill.fore_color.rgb = bg_color
+            p = c_rec.text_frame.paragraphs[0]
+            run = p.runs[0]
+            run.font.name = "Inter"
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(71, 85, 105)
+            c_rec.vertical_anchor = MSO_ANCHOR.MIDDLE
+            c_rec.margin_left = Pt(10)
+            
+            if include_exceptions:
+                c_resp = table.cell(row, 2)
+                c_resp.text = str(obs.get("management_response", "No comments recorded."))
+                c_resp.fill.solid()
+                c_resp.fill.fore_color.rgb = bg_color
+                p = c_resp.text_frame.paragraphs[0]
                 run = p.runs[0]
                 run.font.name = "Inter"
                 run.font.size = Pt(9)
                 run.font.color.rgb = RGBColor(71, 85, 105)
-                c_rec.vertical_anchor = MSO_ANCHOR.MIDDLE
-                c_rec.margin_left = Pt(10)
-                
-                if include_exceptions:
-                    c_resp = table.cell(row, 2)
-                    c_resp.text = str(obs.get("management_response", "No comments recorded."))
-                    c_resp.fill.solid()
-                    c_resp.fill.fore_color.rgb = bg_color
-                    p = c_resp.text_frame.paragraphs[0]
-                    run = p.runs[0]
-                    run.font.name = "Inter"
-                    run.font.size = Pt(9)
-                    run.font.color.rgb = RGBColor(71, 85, 105)
-                    c_resp.vertical_anchor = MSO_ANCHOR.MIDDLE
-                    c_resp.margin_left = Pt(10)
-                
+                c_resp.vertical_anchor = MSO_ANCHOR.MIDDLE
+                c_resp.margin_left = Pt(10)
+            
+    if report_type == "Detailed Findings Report" or include_exceptions:
         # Detailed Observations Slide splitting (max 4 per slide)
         detailed_obs = []
         for t_name, count in table_counts.items():
