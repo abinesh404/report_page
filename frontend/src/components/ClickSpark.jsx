@@ -64,42 +64,54 @@ const ClickSpark = ({
     [easing]
   );
 
-  const drawSparks = useCallback(() => {
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    if (!startTimeRef.current) startTimeRef.current = performance.now();
-    const elapsed = performance.now() - startTimeRef.current;
-    const progress = Math.min(elapsed / duration, 1);
-    const easedProgress = easeFunc(progress);
+    let animationId;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const draw = () => {
+      if (sparksRef.current.length === 0) return;
 
-    sparksRef.current.forEach((spark) => {
-      const x = spark.x + Math.cos(spark.angle) * sparkRadius * easedProgress * extraScale;
-      const y = spark.y + Math.sin(spark.angle) * sparkRadius * easedProgress * extraScale;
-      const currentSize = sparkSize * (1 - easedProgress);
-      const opacity = 1 - easedProgress;
+      if (!startTimeRef.current) startTimeRef.current = performance.now();
+      const elapsed = performance.now() - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = easeFunc(progress);
 
-      ctx.save();
-      ctx.globalAlpha = opacity;
-      ctx.fillStyle = sparkColor;
-      ctx.beginPath();
-      ctx.arc(x, y, currentSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    });
-
-    if (progress < 1) {
-      requestAnimationFrame(drawSparks);
-    } else {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      sparksRef.current = [];
-      startTimeRef.current = null;
-    }
+
+      sparksRef.current.forEach((spark) => {
+        const x = spark.x + Math.cos(spark.angle) * sparkRadius * easedProgress * extraScale;
+        const y = spark.y + Math.sin(spark.angle) * sparkRadius * easedProgress * extraScale;
+        const currentSize = sparkSize * (1 - easedProgress);
+        const opacity = 1 - easedProgress;
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.fillStyle = sparkColor;
+        ctx.beginPath();
+        ctx.arc(x, y, currentSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      if (progress < 1) {
+        animationId = requestAnimationFrame(draw);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        sparksRef.current = [];
+        startTimeRef.current = null;
+      }
+    };
+
+    animationId = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
   }, [duration, sparkColor, sparkSize, sparkRadius, easeFunc, extraScale]);
 
   const handleClick = useCallback(
@@ -119,9 +131,8 @@ const ClickSpark = ({
 
       sparksRef.current = newSparks;
       startTimeRef.current = null;
-      requestAnimationFrame(drawSparks);
     },
-    [sparkCount, drawSparks]
+    [sparkCount]
   );
 
   return (

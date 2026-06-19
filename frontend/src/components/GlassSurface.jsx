@@ -13,7 +13,7 @@ export const GlassSurface = memo(({
   blueOffset = 0,
   brightness = 100,
   opacity = 1,
-  blur = 5,
+  blur = 1,
   mixBlendMode = 'normal',
   style = {},
   ...props
