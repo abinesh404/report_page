@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import ProgressBar from './ProgressBar';
 import GlassSurface from './GlassSurface';
+import BorderGlow from './BorderGlow';
 
 export default function ReportForm({
   formData,
@@ -53,9 +54,20 @@ export default function ReportForm({
 
   return (
     <div className="page-wrap">
-      <GlassSurface
-        displace={0.9}
-        distortionScale={0}
+      <BorderGlow
+        edgeSensitivity={30}
+        glowColor="40 80 80"
+        backgroundColor="transparent"
+        borderRadius={28}
+        glowRadius={40}
+        glowIntensity={1}
+        coneSpread={25}
+        animated={false}
+        colors={['#c084fc', '#f472b6', '#38bdf8']}
+      >
+        <GlassSurface
+          displace={0.9}
+          distortionScale={0}
         redOffset={0}
         greenOffset={10}
         blueOffset={20}
@@ -356,6 +368,7 @@ export default function ReportForm({
           </div>
         </div>
       </GlassSurface>
+      </BorderGlow>
     </div>
   );
 }
