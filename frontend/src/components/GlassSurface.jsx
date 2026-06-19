@@ -21,10 +21,10 @@ export const GlassSurface = memo(({
   const baseId = useId();
   const filterId = `glass-distortion-${baseId.replace(/:/g, '')}`;
 
-  // Reduced displacement values to prevent edge noise/artifacts
-  const finalRedScale = (distortionScale + redOffset) * displace * 0.35;
-  const finalGreenScale = (distortionScale + greenOffset) * displace * 0.35;
-  const finalBlueScale = (distortionScale + blueOffset) * displace * 0.35;
+  // Increased multiplier for more pronounced liquid warp
+  const finalRedScale = (distortionScale + redOffset) * displace * 0.6;
+  const finalGreenScale = (distortionScale + greenOffset) * displace * 0.6;
+  const finalBlueScale = (distortionScale + blueOffset) * displace * 0.6;
 
   return (
     <div
@@ -38,19 +38,18 @@ export const GlassSurface = memo(({
       }}
       {...props}
     >
-      {/* SVG filter — tamed turbulence to avoid edge noise */}
+      {/* SVG filter — tuned for liquid distortion */}
       <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }}>
         <defs>
           <filter id={filterId} x="0%" y="0%" width="100%" height="100%" colorInterpolationFilters="sRGB">
-            {/* Lower frequency + more blur = smoother glass, no edge noise */}
             <feTurbulence
               type="fractalNoise"
-              baseFrequency="0.002 0.002"
-              numOctaves="1"
-              seed="42"
+              baseFrequency="0.004 0.004"
+              numOctaves="2"
+              seed="2"
               result="noise"
             />
-            <feGaussianBlur in="noise" stdDeviation="8.0" result="blurredNoise" />
+            <feGaussianBlur in="noise" stdDeviation="5.0" result="blurredNoise" />
 
             {/* Red Channel Displacement */}
             <feColorMatrix in="SourceGraphic" type="matrix" values="
