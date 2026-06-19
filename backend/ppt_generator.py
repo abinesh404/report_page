@@ -103,113 +103,31 @@ def duplicate_slide(prs, source_slide):
     return target_slide
 
 def get_management_response_summary(conn_comp, table_name):
-    comment_columns = {
-        "bank_account_changed": "Exception",
-        "direct_changes_sap": "description",
-        "duplicate_customers": "invalid_reason",
-        "finished_goods_dispatched_wo_qi": "return_reason",
-        "gst_working": "Exception",
-        "mjot06_yield_loss": "operation_short_text",
-        "po_terms_changed": "Short Text",
-        "procurement_higher_contract": "Comment",
-        "sjin13_unplanned_delivery": "document_header_text",
-        "sjpa7_msme_penalty": "ITEM_TEXT",
-        "tds_insight": "Text",
-        "password_test": "password_status",
-    }
-    
-    # Mapping of tables to fallback exception-related code columns
-    exception_code_columns = {
-        "bank_account_changed": ["Document No", "Vendors"],
-        "cjs1_quality_rejected": ["material", "document_number"],
-        "cjsa22_foc_discount": ["billing_document", "material_number"],
-        "cjsa23_sales_return_qty": ["billing_document_number", "customer_number"],
-        "direct_changes_sap": ["user_id", "change_date"],
-        "duplicate_customers": ["customer_number"],
-        "finished_goods_dispatched_wo_qi": ["material", "sales_document"],
-        "gst_working": ["Invoice Number", "Product Code"],
-        "mjot06_yield_loss": ["material_number", "order_number"],
-        "multiple_sales_return": ["Billing Doc", "Material"],
-        "password_test": ["user_id"],
-        "po_split": ["purchase_order_number", "vendor_number"],
-        "po_terms_changed": ["Purchasing Document", "Material"],
-        "procurement_higher_contract": ["PO No", "Material Code"],
-        "reorder_level": ["material", "po_number"],
-        "sales_return_180": ["Billing Doc", "Material"],
-        "sales_return_im": ["Billing Doc", "Material"],
-        "sales_return_price_mismatch": ["Billing Doc", "Material"],
-        "scrap_sales": ["billing_document", "material_number"],
-        "sjin13_unplanned_delivery": ["po_number", "material_number"],
-        "sjpa7_msme_penalty": ["DOCUMENT_NUMBER", "VENDOR_CODE"],
-        "tds_insight": ["Document Number", "Clearing Document"],
-    }
-    
-    col_name = comment_columns.get(table_name)
-    is_fallback = False
-    
     rows = []
-    if col_name:
-        try:
-            with conn_comp.cursor() as cur:
-                cur.execute("SET search_path TO complibear;")
-                query = f"""
-                    SELECT "{col_name}", COUNT(*) 
-                    FROM "{table_name}" 
-                    WHERE "{col_name}" IS NOT NULL AND "{col_name}" != 'NULL' AND "{col_name}" != ''
-                    GROUP BY "{col_name}"
-                    ORDER BY COUNT(*) DESC;
-                """
-                cur.execute(query)
-                rows = cur.fetchall()
-        except Exception:
-            pass
+    try:
+        with conn_comp.cursor() as cur:
+            cur.execute("SET search_path TO complibear;")
+            query = f"""
+                SELECT comment, COUNT(*) 
+                FROM "{table_name}" 
+                WHERE comment IS NOT NULL AND comment != 'NULL' AND comment != ''
+                GROUP BY comment
+                ORDER BY COUNT(*) DESC;
+            """
+            cur.execute(query)
+            rows = cur.fetchall()
+    except Exception:
+        pass
             
     if not rows:
-        is_fallback = True
-        candidates = exception_code_columns.get(table_name, [])
-        actual_col = None
-        try:
-            with conn_comp.cursor() as cur:
-                cur.execute("SET search_path TO complibear;")
-                cur.execute(f"SELECT * FROM \"{table_name}\" LIMIT 0;")
-                existing_cols = [desc[0] for desc in cur.description]
-                for cand in candidates:
-                    matched = next((c for c in existing_cols if c.lower() == cand.lower()), None)
-                    if matched:
-                        actual_col = matched
-                        break
-                if not actual_col and existing_cols:
-                    actual_col = existing_cols[0]
-        except Exception:
-            pass
-            
-        if actual_col:
-            col_name = actual_col
-            try:
-                with conn_comp.cursor() as cur:
-                    cur.execute("SET search_path TO complibear;")
-                    query = f"""
-                        SELECT "{col_name}", COUNT(*) 
-                        FROM "{table_name}" 
-                        WHERE "{col_name}" IS NOT NULL AND "{col_name}" != 'NULL' AND "{col_name}" != ''
-                        GROUP BY "{col_name}"
-                        ORDER BY COUNT(*) DESC;
-                    """
-                    cur.execute(query)
-                    rows = cur.fetchall()
-            except Exception:
-                pass
-                
-    if not rows:
-        return "No comments or codes available."
+        return "No Management Response Provided"
         
     summary_parts = []
     for val, count in rows[:2]:
         val_str = str(val).strip()
         summary_parts.append(f"'{val_str}' ({count})")
         
-    prefix = "Top remarks: " if not is_fallback else f"Exception codes ({col_name}): "
-    summary = prefix + ", ".join(summary_parts)
+    summary = "Top remarks: " + ", ".join(summary_parts)
     if len(rows) > 2:
         summary += f" (+{len(rows) - 2} other types)"
     return summary
