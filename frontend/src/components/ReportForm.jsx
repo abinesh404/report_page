@@ -63,6 +63,7 @@ export default function ReportForm({
         glowIntensity={1}
         coneSpread={25}
         animated={false}
+        fillOpacity={0}
         colors={['#c084fc', '#f472b6', '#38bdf8']}
       >
         <GlassSurface
