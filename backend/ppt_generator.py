@@ -4,7 +4,7 @@ from datetime import datetime, date
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from pptx import Presentation
-from pptx.util import Pt
+from pptx.util import Pt, Inches
 from pptx.dml.color import RGBColor
 import matplotlib
 matplotlib.use('Agg') # Ensure headless compatibility
@@ -197,10 +197,17 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                 "scrap_sales": "Scrap Management"
             }
             
+            # Fetch existing tables to prevent UndefinedTable exceptions
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'complibear';")
+            existing_tables = {r[0] for r in cur.fetchall()}
+
             process_counts = {p: 0 for p in set(table_to_process.values())}
             for table in tables:
-                cur.execute(f"SELECT COUNT(*) FROM \"{table}\";")
-                count = cur.fetchone()[0]
+                if table in existing_tables:
+                    cur.execute(f"SELECT COUNT(*) FROM \"{table}\";")
+                    count = cur.fetchone()[0]
+                else:
+                    count = 0
                 process = table_to_process[table]
                 process_counts[process] += count
     finally:
@@ -216,94 +223,258 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     medium_percent = (medium_count / total_count) * 100
     low_percent = (low_count / total_count) * 100
 
-    # 4. Open PPTX template
-    ppt_path = r"d:\report page\backend\Templet\Internal Audit Executive Summary  Methodology.pptx"
-    if not os.path.exists(ppt_path):
-        raise FileNotFoundError(f"PowerPoint template not found at {ppt_path}")
+    # 4. Initialize pure code Presentation with widescreen (16:9) layout
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank_layout = prs.slide_layouts[6]
 
-    prs = Presentation(ppt_path)
+    # Helper function for footers
+    def add_footer(slide, r_type):
+        footer_text = f'CONFIDENTIAL "{r_type or "Internal Audit Executive Summary"}"'
+        left_box = slide.shapes.add_textbox(Inches(0.6), Inches(7.0), Inches(6.0), Inches(0.35))
+        tf_left = left_box.text_frame
+        tf_left.word_wrap = True
+        tf_left.margin_left = tf_left.margin_right = tf_left.margin_top = tf_left.margin_bottom = 0
+        p_left = tf_left.paragraphs[0]
+        p_left.text = footer_text
+        if p_left.runs:
+            run_l = p_left.runs[0]
+        else:
+            run_l = p_left.add_run()
+        run_l.font.name = "Inter"
+        run_l.font.size = Pt(9)
+        run_l.font.italic = True
+        run_l.font.color.rgb = RGBColor(148, 163, 184) # light slate-400
+
+        right_box = slide.shapes.add_textbox(Inches(7.0), Inches(6.9), Inches(5.733), Inches(0.4))
+        tf_right = right_box.text_frame
+        tf_right.word_wrap = True
+        tf_right.margin_left = tf_right.margin_right = tf_right.margin_top = tf_right.margin_bottom = 0
+        p_right = tf_right.paragraphs[0]
+        p_right.alignment = PP_ALIGN.RIGHT
+        p_right.text = "Drafted by ALTeX HUB"
+        if p_right.runs:
+            run_r = p_right.runs[0]
+        else:
+            run_r = p_right.add_run()
+        run_r.font.name = "Inter"
+        run_r.font.size = Pt(11)
+        run_r.font.bold = True
+        run_r.font.color.rgb = RGBColor(71, 85, 105) # slate-600
+
+    # Helper function to add background, top accent bar, slide title, logo, and footer
+    def add_slide_decorations(slide, title_text):
+        # Background
+        background = slide.background
+        fill = background.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor(248, 250, 252)
+
+        # Top Accent bar
+        from pptx.enum.shapes import MSO_SHAPE
+        accent_bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.15))
+        accent_bar.fill.solid()
+        accent_bar.fill.fore_color.rgb = RGBColor(59, 130, 246)
+        accent_bar.line.fill.background()
+
+        # Slide Title
+        if title_text:
+            title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(9.5), Inches(0.8))
+            tf = title_box.text_frame
+            tf.word_wrap = True
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+            p = tf.paragraphs[0]
+            p.text = title_text
+            run = p.runs[0]
+            run.font.name = "Inter"
+            run.font.size = Pt(24)
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(15, 23, 42)
+
+        # Logo on Top Right
+        logo_box = slide.shapes.add_textbox(Inches(10.5), Inches(0.4), Inches(2.233), Inches(0.5))
+        tf_logo = logo_box.text_frame
+        tf_logo.margin_left = tf_logo.margin_right = tf_logo.margin_top = tf_logo.margin_bottom = 0
+        p_logo = tf_logo.paragraphs[0]
+        p_logo.alignment = PP_ALIGN.RIGHT
+        p_logo.text = "ALTeX HUB"
+        run_logo = p_logo.runs[0]
+        run_logo.font.name = "Inter"
+        run_logo.font.size = Pt(12)
+        run_logo.font.bold = True
+        run_logo.font.color.rgb = RGBColor(30, 41, 59)
+
+        add_footer(slide, report_type)
 
     # Slide 1: Cover
-    slide1 = prs.slides[0]
-    for shape in slide1.shapes:
-        if shape.has_text_frame:
-            txt = shape.text_frame.text
-            if "Comprehensive Review" in txt:
-                target = None
-                for t in ["Comprehensive Review: Q3 2026. ", "Comprehensive Review: Q3 2026.", "Comprehensive Review:"]:
-                    if t in txt:
-                        target = t
-                        break
-                if not target:
-                    target = "Comprehensive Review"
-                replace_text_in_shape(shape, target, f"Comprehensive Review: {report_name}\nTimeline: {db_start_date} – {db_end_date}")
+    slide1 = prs.slides.add_slide(blank_layout)
+    bg1 = slide1.background
+    bg1.fill.solid()
+    bg1.fill.fore_color.rgb = RGBColor(15, 23, 42) # Slate 900
+    
+    # Accent decoration on cover
+    from pptx.enum.shapes import MSO_SHAPE
+    cover_accent = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.5), Inches(0.1), Inches(4.5))
+    cover_accent.fill.solid()
+    cover_accent.fill.fore_color.rgb = RGBColor(59, 130, 246)
+    cover_accent.line.fill.background()
+
+    # Cover Text Box
+    cover_box = slide1.shapes.add_textbox(Inches(1.0), Inches(1.8), Inches(11.3), Inches(3.8))
+    tf_c = cover_box.text_frame
+    tf_c.word_wrap = True
+    tf_c.margin_left = tf_c.margin_right = tf_c.margin_top = tf_c.margin_bottom = 0
+    
+    p_sub = tf_c.paragraphs[0]
+    p_sub.text = "Internal Audit & Executive Summary"
+    r_sub = p_sub.runs[0]
+    r_sub.font.name = "Inter"
+    r_sub.font.size = Pt(18)
+    r_sub.font.bold = True
+    r_sub.font.color.rgb = RGBColor(148, 163, 184) # Slate 400
+    
+    p_title = tf_c.add_paragraph()
+    p_title.space_before = Pt(14)
+    p_title.text = f"Comprehensive Review: {report_name}"
+    r_title = p_title.runs[0]
+    r_title.font.name = "Inter"
+    r_title.font.size = Pt(36)
+    r_title.font.bold = True
+    r_title.font.color.rgb = RGBColor(255, 255, 255)
+
+    p_time = tf_c.add_paragraph()
+    p_time.space_before = Pt(28)
+    p_time.text = f"Timeline: {db_start_date} – {db_end_date}"
+    r_time = p_time.runs[0]
+    r_time.font.name = "Inter"
+    r_time.font.size = Pt(16)
+    r_time.font.color.rgb = RGBColor(203, 213, 225) # Slate 300
+    
+    add_footer(slide1, report_type)
 
     # Slide 2: Introduction
-    slide2 = prs.slides[1]
-    for shape in slide2.shapes:
-        if shape.has_text_frame:
-            if "CJSJ Ltd" in shape.text_frame.text:
-                replace_text_in_shape(shape, "CJSJ Ltd", company)
-            if "manufacturing" in shape.text_frame.text:
-                replace_text_in_shape(shape, "manufacturing", sector.lower())
+    slide2 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide2, "1. Introduction & Background")
+    intro_box = slide2.shapes.add_textbox(Inches(0.6), Inches(1.5), Inches(12.133), Inches(5.0))
+    tf_intro = intro_box.text_frame
+    tf_intro.word_wrap = True
+    tf_intro.margin_left = tf_intro.margin_right = tf_intro.margin_top = tf_intro.margin_bottom = 0
+    
+    p_intro_sub = tf_intro.paragraphs[0]
+    p_intro_sub.text = "Context of the Review"
+    p_intro_sub.runs[0].font.name = "Inter"
+    p_intro_sub.runs[0].font.size = Pt(16)
+    p_intro_sub.runs[0].font.bold = True
+    p_intro_sub.runs[0].font.color.rgb = RGBColor(30, 41, 59)
+    
+    bullets = [
+        f"In accordance with the 2026 Annual Audit Plan, Internal Audit has initiated a comprehensive review of {company}, a key player in the {sector.lower()} sector.",
+        f"Our audit focuses on evaluating the robustness of {company}'s core manufacturing operations, supply chain management, and corresponding financial controls.",
+        "The primary objective is to provide independent assurance to the Board regarding the effectiveness of the risk management framework, specifically targeting production efficiency and operational resilience."
+    ]
+    for b in bullets:
+        p_b = tf_intro.add_paragraph()
+        p_b.space_before = Pt(14)
+        p_b.level = 0
+        p_b.text = "•  " + b
+        run_b = p_b.runs[0]
+        run_b.font.name = "Inter"
+        run_b.font.size = Pt(13)
+        run_b.font.color.rgb = RGBColor(71, 85, 105)
 
     # Slide 3: Scope
-    slide3 = prs.slides[2]
-    for shape in slide3.shapes:
-        if shape.has_text_frame:
-            if "January 1, 2026" in shape.text_frame.text or "September 30, 2026" in shape.text_frame.text:
-                replace_text_in_shape(shape, "January 1, 2026", db_start_date)
-                replace_text_in_shape(shape, "September 30, 2026", db_end_date)
+    slide3 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide3, "2. Audit Scope")
+    scope_box = slide3.shapes.add_textbox(Inches(0.6), Inches(1.5), Inches(12.133), Inches(5.0))
+    tf_scope = scope_box.text_frame
+    tf_scope.word_wrap = True
+    tf_scope.margin_left = tf_scope.margin_right = tf_scope.margin_top = tf_scope.margin_bottom = 0
+    
+    p_scope_sub = tf_scope.paragraphs[0]
+    p_scope_sub.text = "Review Period"
+    p_scope_sub.runs[0].font.name = "Inter"
+    p_scope_sub.runs[0].font.size = Pt(16)
+    p_scope_sub.runs[0].font.bold = True
+    p_scope_sub.runs[0].font.color.rgb = RGBColor(30, 41, 59)
+    
+    p_scope_text = tf_scope.add_paragraph()
+    p_scope_text.space_before = Pt(14)
+    p_scope_text.text = f"Testing procedures were conducted on transactions, access logs, and operational activities occurring between {db_start_date} and {db_end_date}."
+    run_s = p_scope_text.runs[0]
+    run_s.font.name = "Inter"
+    run_s.font.size = Pt(13)
+    run_s.font.color.rgb = RGBColor(71, 85, 105)
 
     # Slide 4: Methodology
-    slide4 = prs.slides[3]
-    for shape in slide4.shapes:
-        if shape.has_text_frame:
-            if "45 distinct controls" in shape.text_frame.text:
-                replace_text_in_shape(shape, "45 distinct controls", f"{total_count} distinct controls")
-                
+    slide4 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide4, "3. Approach & Methodology")
+    method_box = slide4.shapes.add_textbox(Inches(0.6), Inches(1.5), Inches(12.133), Inches(5.0))
+    tf_method = method_box.text_frame
+    tf_method.word_wrap = True
+    tf_method.margin_left = tf_method.margin_right = tf_method.margin_top = tf_method.margin_bottom = 0
+    
+    methodologies = [
+        ("Risk Assessment", "Conducted preliminary risk scoring based on financial materiality and operational criticality."),
+        ("Process Walkthroughs", "Interviewed process owners to document current-state workflows and identify key control points."),
+        ("Sample Testing", f"Applied statistical sampling to test the operating effectiveness of {total_count} distinct controls over a 9-month period."),
+        ("Evaluation", "Assessed identified control gaps against the COSO framework and evaluated existing compensating controls.")
+    ]
+    
+    first = True
+    for title, desc in methodologies:
+        p_m = tf_method.paragraphs[0] if first else tf_method.add_paragraph()
+        first = False
+        if p_m.text:
+            p_m.space_before = Pt(14)
+        p_m.text = f"•  {title}: "
+        r_t = p_m.runs[0]
+        r_t.font.name = "Inter"
+        r_t.font.size = Pt(13)
+        r_t.font.bold = True
+        r_t.font.color.rgb = RGBColor(30, 41, 59)
+        
+        r_d = p_m.add_run()
+        r_d.text = desc
+        r_d.font.name = "Inter"
+        r_d.font.size = Pt(13)
+        r_d.font.color.rgb = RGBColor(71, 85, 105)
+
     # Slide 5: Executive Summary
-    slide5 = prs.slides[4]
+    slide5 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide5, "4. Executive Summary")
+    exec_box = slide5.shapes.add_textbox(Inches(0.6), Inches(1.5), Inches(12.133), Inches(5.0))
+    tf_exec = exec_box.text_frame
+    tf_exec.word_wrap = True
+    tf_exec.margin_left = tf_exec.margin_right = tf_exec.margin_top = tf_exec.margin_bottom = 0
+    
     overall_rating = "Needs Improvement" if high_count > 0 else "Satisfactory"
     
-    # Remove the static Overall Rating badge (Shape 8 picture on right)
-    for shp in list(slide5.shapes):
-        if shp.shape_type == 13 and shp.left > 6000000 and shp.width > 4000000:
-            sp = shp._element
-            sp.getparent().remove(sp)
-            
-    for shape in slide5.shapes:
-        if shape.has_text_frame:
-            txt = shape.text_frame.text
-            if "Based on the results of our testing" in txt:
-                replace_text_in_shape(shape, '"Needs Improvement"', f'"{overall_rating}"')
-            elif "While foundational financial" in txt:
-                # Capture formatting of the first run
-                first_run = None
-                if shape.text_frame.paragraphs and shape.text_frame.paragraphs[0].runs:
-                    first_run = shape.text_frame.paragraphs[0].runs[0]
-                font_name = first_run.font.name if first_run and first_run.font.name else "Inter"
-                font_size = first_run.font.size if first_run and first_run.font.size else Pt(11)
-                color = first_run.font.color.rgb if first_run and first_run.font.color and first_run.font.color.type == 1 else RGBColor(71, 85, 105)
-                
-                shape.text_frame.clear()
-                p = shape.text_frame.paragraphs[0]
-                run = p.add_run()
-                run.text = f"Our audit reviewed {len(controls)} controls across {len(process_counts)} key business processes. We identified {high_count} High Risk findings and {medium_count} Medium Risk findings that require attention."
-                run.font.name = font_name
-                run.font.size = font_size
-                run.font.color.rgb = color
+    p_rating = tf_exec.paragraphs[0]
+    p_rating.text = f"Based on the results of our testing, the overall control environment is rated as \"{overall_rating}\"."
+    r_rat = p_rating.runs[0]
+    r_rat.font.name = "Inter"
+    r_rat.font.size = Pt(14)
+    r_rat.font.bold = True
+    r_rat.font.color.rgb = RGBColor(153, 27, 27) if high_count > 0 else RGBColor(22, 101, 52)
+    
+    p_desc = tf_exec.add_paragraph()
+    p_desc.space_before = Pt(14)
+    p_desc.text = f"Our audit reviewed {len(controls)} controls across {len(process_counts)} key business processes. We identified {high_count} High Risk findings and {medium_count} Medium Risk findings that require attention."
+    r_desc = p_desc.runs[0]
+    r_desc.font.name = "Inter"
+    r_desc.font.size = Pt(13)
+    r_desc.font.color.rgb = RGBColor(71, 85, 105)
+    
+    p_remed = tf_exec.add_paragraph()
+    p_remed.space_before = Pt(14)
+    p_remed.text = "Management has proactively acknowledged these findings and has committed resources to execute a robust remediation plan by the end of Q4."
+    r_rem = p_remed.runs[0]
+    r_rem.font.name = "Inter"
+    r_rem.font.size = Pt(13)
+    r_rem.font.color.rgb = RGBColor(71, 85, 105)
 
-    # Slide 6: Findings table grid
-    slide6 = prs.slides[5]
-
-    # Remove manual lines and empty boxes from Slide 6 (shape type 1)
-    # We keep background, title, and logo
-    for shp in list(slide6.shapes):
-        if shp.shape_type == 1 and shp.top > Pt(100):
-            sp = shp._element
-            sp.getparent().remove(sp)
-            
+    # Slide 6: Summary of Key Findings (grouped by process)
     # Group by Process for Slide 6
     process_summary = {}
     for ctrl in controls:
@@ -336,42 +507,17 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
         
     sorted_processes = sorted(final_processes, key=lambda x: x['exception_count'], reverse=True)
 
-    # Slide 6: Summary of Key Findings (grouped by process)
-    slide6 = prs.slides[5]
-    
-    # Intelligently split across slides (max 4 per slide)
     chunks = [sorted_processes[i:i + 4] for i in range(0, len(sorted_processes), 4)]
     if not chunks:
         chunks = [[]]
         
-    added_slide_ids = []
-        
     for chunk_idx, chunk in enumerate(chunks):
-        target_slide = slide6
-        if chunk_idx > 0:
-            # Duplicate Slide 6 properly preserving image relationships
-            target_slide = prs.slides.add_slide(slide6.slide_layout)
-            added_slide_ids.append(prs.slides._sldIdLst[-1])
+        target_slide = prs.slides.add_slide(blank_layout)
+        title_text = "Summary of Key Findings"
+        if len(chunks) > 1:
+            title_text += f" ({chunk_idx + 1}/{len(chunks)})"
+        add_slide_decorations(target_slide, title_text)
             
-            for shp in list(target_slide.shapes):
-                sp = shp._element
-                sp.getparent().remove(sp)
-                
-            for shape in slide6.shapes:
-                if getattr(shape, "has_table", False):
-                    continue # don't copy the table
-                    
-                if shape.shape_type == 13: # MSO_SHAPE_TYPE.PICTURE
-                    try:
-                        image_bytes = shape.image.blob
-                        image_stream = io.BytesIO(image_bytes)
-                        target_slide.shapes.add_picture(image_stream, shape.left, shape.top, shape.width, shape.height)
-                    except Exception:
-                        pass # Ignore if no image blob
-                else:
-                    new_el = copy.deepcopy(shape._element)
-                    target_slide.shapes._spTree.insert_element_before(new_el, 'p:extLst')
-                    
         # Calculate table height dynamically based on rows
         table_height = 385000 + len(chunk) * 560000
         table_shape = target_slide.shapes.add_table(len(chunk) + 1, 5, 609600, 1420000, 10972800, table_height)
@@ -459,15 +605,10 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(71, 85, 105)
 
-    # Slide 7: Risk Distribution Profile (Redesigned Split Screen)
-    slide7 = prs.slides[6]
+    # Slide 7: Risk Distribution Profile
+    slide7 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide7, "Risk Distribution Profile")
     
-    # Remove any old chart or text shapes on Slide 7 except the title and logo
-    for shp in list(slide7.shapes):
-        if shp.shape_type == 13 and shp.left < 10000000:
-            sp = shp._element
-            sp.getparent().remove(sp)
-            
     # Load mapping and definitions from ref_audit_plan table in PostgreSQL
     conn_sent = sentinel_pool.getconn()
     try:
@@ -521,10 +662,17 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     try:
         with conn_comp.cursor() as cur:
             cur.execute("SET search_path TO complibear;")
+            # Fetch existing tables to prevent UndefinedTable exceptions
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'complibear';")
+            existing_tables = {r[0] for r in cur.fetchall()}
+
             table_counts = {}
             for t_name in table_to_id.keys():
-                cur.execute(f'SELECT COUNT(*) FROM "{t_name}";')
-                table_counts[t_name] = cur.fetchone()[0]
+                if t_name in existing_tables:
+                    cur.execute(f'SELECT COUNT(*) FROM "{t_name}";')
+                    table_counts[t_name] = cur.fetchone()[0]
+                else:
+                    table_counts[t_name] = 0
     finally:
         conn_comp.close()
         
@@ -752,66 +900,92 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     plt.close(fig)
     
     slide7.shapes.add_picture(chart_buf, Pt(496), Pt(315), Pt(425), Pt(190))
+
+    # Slide 8: Insights/Exceptions by Process
+    slide8 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide8, "Insights/Exceptions by Process")
+
+    sorted_process_counts = sorted(process_counts.items(), key=lambda x: x[1])
+    sorted_process_counts = [x for x in sorted_process_counts if x[1] > 0]
+    proc_names = [x[0] for x in sorted_process_counts]
+    proc_vals = [x[1] for x in sorted_process_counts]
     
-    # Slide 8: Bar Chart
-    slide8 = prs.slides[7]
-    pic_shape_8 = None
-    for shape in slide8.shapes:
-        if shape.shape_type == 13 and "153" in shape.name:
-            pic_shape_8 = shape
-            break
-            
-    if pic_shape_8:
-        left, top, width, height = pic_shape_8.left, pic_shape_8.top, pic_shape_8.width, pic_shape_8.height
-        sorted_process_counts = sorted(process_counts.items(), key=lambda x: x[1])
-        sorted_process_counts = [x for x in sorted_process_counts if x[1] > 0]
-        proc_names = [x[0] for x in sorted_process_counts]
-        proc_vals = [x[1] for x in sorted_process_counts]
-        
-        fig, ax = plt.subplots(figsize=(11.66, 5.27))
-        plt.subplots_adjust(left=0.25, right=0.9, top=0.9, bottom=0.15)
-        
-        num_cats = len(proc_names)
-        bar_height = max(0.2, min(0.6, 10 / max(num_cats, 1)))
-        
-        bars = ax.barh(proc_names, proc_vals, color='#3b82f6', edgecolor='white', height=bar_height)
-        for bar in bars:
-            width_val = bar.get_width()
-            ax.text(width_val + (width_val * 0.02 if width_val > 0 else 10), 
-                    bar.get_y() + bar.get_height()/2, 
-                    f"{width_val:,}", 
-                    va='center', ha='left', fontsize=9, fontweight='bold', color='#1e293b')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_color('#94a3b8')
-        ax.xaxis.set_visible(False)
-        
-        label_size = 10 if num_cats < 10 else 8
-        ax.tick_params(axis='y', colors='#475569', labelsize=label_size)
-        
-        fig.patch.set_alpha(0.0)
-        ax.patch.set_alpha(0.0)
-        
-        chart_buf = io.BytesIO()
-        plt.savefig(chart_buf, format='png', bbox_inches='tight', dpi=180, transparent=True)
-        chart_buf.seek(0)
-        plt.close(fig)
-        
-        slide8.shapes.add_picture(chart_buf, left, top, width, height)
-        sp = pic_shape_8._element
-        sp.getparent().remove(sp)
-        
+    fig, ax = plt.subplots(figsize=(11.66, 4.0))
+    plt.subplots_adjust(left=0.25, right=0.9, top=0.9, bottom=0.15)
+    
+    num_cats = len(proc_names)
+    bar_height = max(0.2, min(0.6, 10 / max(num_cats, 1)))
+    
+    bars = ax.barh(proc_names, proc_vals, color='#3b82f6', edgecolor='white', height=bar_height)
+    for bar in bars:
+        width_val = bar.get_width()
+        ax.text(width_val + (width_val * 0.02 if width_val > 0 else 10), 
+                bar.get_y() + bar.get_height()/2, 
+                f"{width_val:,}", 
+                va='center', ha='left', fontsize=9, fontweight='bold', color='#1e293b')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_color('#94a3b8')
+    ax.xaxis.set_visible(False)
+    
+    label_size = 10 if num_cats < 10 else 8
+    ax.tick_params(axis='y', colors='#475569', labelsize=label_size)
+    
+    fig.patch.set_alpha(0.0)
+    ax.patch.set_alpha(0.0)
+    
+    chart_buf2 = io.BytesIO()
+    plt.savefig(chart_buf2, format='png', bbox_inches='tight', dpi=180, transparent=True)
+    chart_buf2.seek(0)
+    plt.close(fig)
+    
+    slide8.shapes.add_picture(chart_buf2, Inches(0.6), Inches(1.5), Inches(12.133), Inches(4.5))
+    
     max_process = max(process_counts, key=process_counts.get) if process_counts else "Unknown"
-    for shape in slide8.shapes:
-        if shape.has_text_frame and "largest volume of findings" in shape.text_frame.text:
-            replace_text_in_shape(shape, shape.text_frame.text, 
-                                  f"{max_process} represents the largest volume of findings, driving the primary narrative and remediation focus for the remainder of the fiscal year.")
+    desc_box = slide8.shapes.add_textbox(Inches(0.6), Inches(6.1), Inches(12.133), Inches(0.8))
+    tf_desc = desc_box.text_frame
+    tf_desc.word_wrap = True
+    tf_desc.margin_left = tf_desc.margin_right = tf_desc.margin_top = tf_desc.margin_bottom = 0
+    p_desc = tf_desc.paragraphs[0]
+    p_desc.text = f"{max_process} represents the largest volume of findings, driving the primary narrative and remediation focus for the remainder of the fiscal year."
+    p_desc.runs[0].font.name = "Inter"
+    p_desc.runs[0].font.size = Pt(11)
+    p_desc.runs[0].font.italic = True
+    p_desc.runs[0].font.color.rgb = RGBColor(71, 85, 105)
+
+    # Slide 9: Conclusion & Next Steps
+    slide9 = prs.slides.add_slide(blank_layout)
+    add_slide_decorations(slide9, "6. Conclusion & Next Steps")
+    
+    conclusion_box = slide9.shapes.add_textbox(Inches(0.6), Inches(1.5), Inches(12.133), Inches(5.0))
+    tf_conclusion = conclusion_box.text_frame
+    tf_conclusion.word_wrap = True
+    tf_conclusion.margin_left = tf_conclusion.margin_right = tf_conclusion.margin_top = tf_conclusion.margin_bottom = 0
+    
+    p_conc_sub = tf_conclusion.paragraphs[0]
+    p_conc_sub.text = "Path Forward to Compliance"
+    p_conc_sub.runs[0].font.name = "Inter"
+    p_conc_sub.runs[0].font.size = Pt(16)
+    p_conc_sub.runs[0].font.bold = True
+    p_conc_sub.runs[0].font.color.rgb = RGBColor(30, 41, 59)
+    
+    conc_bullets = [
+        "The proactive stance taken by executive management to address the IT and vendor management deficiencies highlights a strong organizational commitment to a mature control environment.",
+        "Execution: Complete the Q4 remediation plan focusing on automated access de-provisioning protocols.",
+        "Validation: Internal Audit to conduct formal validation testing of all remediated controls in January 2027.",
+        "Monitoring: Implement continuous monitoring dashboards to track privileged system access requests."
+    ]
+    for cb in conc_bullets:
+        p_cb = tf_conclusion.add_paragraph()
+        p_cb.space_before = Pt(14)
+        p_cb.level = 0
+        p_cb.text = "•  " + cb
+        p_cb.runs[0].font.name = "Inter"
+        p_cb.runs[0].font.size = Pt(13)
+        p_cb.runs[0].font.color.rgb = RGBColor(71, 85, 105)
 
     # Create Key Observations & Detailed Observation slides if Detailed Findings Report
-    key_obs_slide_ids = []
-    detailed_slide_ids = []
-    
     if report_type == "Detailed Findings Report":
         # Recommendations mapping
         recommendations = {
@@ -854,23 +1028,12 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
         # Key Observations Slide splitting (max 4 per slide)
         key_obs_chunks = [active_obs[i:i + 4] for i in range(0, len(active_obs), 4)]
         for chunk_idx, chunk in enumerate(key_obs_chunks):
-            target_slide = duplicate_slide(prs, slide6)
-            key_obs_slide_ids.append(prs.slides._sldIdLst[-1])
+            target_slide = prs.slides.add_slide(blank_layout)
+            title_text = "Key Observations"
+            if len(key_obs_chunks) > 1:
+                title_text += f" ({chunk_idx + 1}/{len(key_obs_chunks)})"
+            add_slide_decorations(target_slide, title_text)
             
-            for shape in target_slide.shapes:
-                if shape.has_text_frame and "Summary of Key Findings" in shape.text_frame.text:
-                    shape.text_frame.clear()
-                    p = shape.text_frame.paragraphs[0]
-                    run = p.add_run()
-                    title_text = "Key Observations"
-                    if len(key_obs_chunks) > 1:
-                        title_text += f" ({chunk_idx + 1}/{len(key_obs_chunks)})"
-                    run.text = title_text
-                    run.font.name = "Inter"
-                    run.font.size = Pt(22)
-                    run.font.bold = True
-                    run.font.color.rgb = RGBColor(30, 41, 59)
-                    
             table_height = Pt(30) + len(chunk) * Pt(45)
             table_shape = target_slide.shapes.add_table(len(chunk) + 1, 2, Pt(48), Pt(112), Pt(864), table_height)
             table = table_shape.table
@@ -947,22 +1110,11 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
         for proc, obs_list in process_detailed.items():
             chunks = [obs_list[i:i + 4] for i in range(0, len(obs_list), 4)]
             for chunk_idx, chunk in enumerate(chunks):
-                target_slide = duplicate_slide(prs, slide6)
-                detailed_slide_ids.append(prs.slides._sldIdLst[-1])
-                
-                for shape in target_slide.shapes:
-                    if shape.has_text_frame and "Summary of Key Findings" in shape.text_frame.text:
-                        shape.text_frame.clear()
-                        p = shape.text_frame.paragraphs[0]
-                        run = p.add_run()
-                        title_text = f"Detailed Observations: {proc}"
-                        if len(chunks) > 1:
-                            title_text += f" ({chunk_idx + 1}/{len(chunks)})"
-                        run.text = title_text
-                        run.font.name = "Inter"
-                        run.font.size = Pt(22)
-                        run.font.bold = True
-                        run.font.color.rgb = RGBColor(30, 41, 59)
+                target_slide = prs.slides.add_slide(blank_layout)
+                title_text = f"Detailed Observations: {proc}"
+                if len(chunks) > 1:
+                    title_text += f" ({chunk_idx + 1}/{len(chunks)})"
+                add_slide_decorations(target_slide, title_text)
                         
                 table_shape = target_slide.shapes.add_table(len(chunk) + 1, 4, Pt(48), Pt(112), Pt(864), Pt(30) + len(chunk) * Pt(45))
                 table = table_shape.table
@@ -1050,29 +1202,6 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                     run.font.bold = True
                     run.font.color.rgb = RGBColor(*risk_color)
                     cell_score.vertical_anchor = MSO_ANCHOR.MIDDLE
-
-    # Reorder slides
-    xml_slides = prs.slides._sldIdLst
-    
-    # 1. Slide 6 additions reordering
-    if added_slide_ids:
-        for i, sldId in enumerate(added_slide_ids):
-            xml_slides.remove(sldId)
-            xml_slides.insert(6 + i, sldId)
-            
-    # 2. Key Observations slides reordering
-    if key_obs_slide_ids:
-        key_obs_start_idx = 8 + len(added_slide_ids)
-        for i, sldId in enumerate(key_obs_slide_ids):
-            xml_slides.remove(sldId)
-            xml_slides.insert(key_obs_start_idx + i, sldId)
-            
-    # 3. Detailed Observations slides reordering
-    if detailed_slide_ids:
-        detailed_start_idx = 8 + len(added_slide_ids) + len(key_obs_slide_ids)
-        for i, sldId in enumerate(detailed_slide_ids):
-            xml_slides.remove(sldId)
-            xml_slides.insert(detailed_start_idx + i, sldId)
 
     # Save to memory buffer
     out_stream = io.BytesIO()

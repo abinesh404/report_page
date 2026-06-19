@@ -75,10 +75,11 @@ function App() {
     if (!auditRow) return;
 
     const getVal = (possibleKeys) => {
-      const key = Object.keys(auditRow).find(
-        (k) => possibleKeys.includes(k) || possibleKeys.map((pk) => pk.toLowerCase()).includes(k.toLowerCase())
+      const matchedKey = possibleKeys.find(
+        (pk) => Object.keys(auditRow).some((k) => k.toLowerCase() === pk.toLowerCase())
       );
-      return key ? auditRow[key] : '';
+      const actualKey = matchedKey ? Object.keys(auditRow).find((k) => k.toLowerCase() === matchedKey.toLowerCase()) : null;
+      return actualKey ? auditRow[actualKey] : '';
     };
 
     const timelineStart = formatDate(getVal(['timeline_start', 'timeline_start_date', 'timelineStart', 'start_date']));
