@@ -182,15 +182,15 @@ function App() {
     setIsGenerating(true);
     setProgress(0);
     setIsCompleted(false);
-    setCurrentPhaseText('Synthesizing audit data...');
-    setCurrentLabelText('Estimated time remaining: <b>10–12 minutes</b>');
+    setCurrentPhaseText('Starting generation...');
+    setCurrentLabelText('Estimated time: <b>Under 5 seconds</b>');
 
     const phases = [
-      { target: 20, label: 'Estimated time remaining: <b>10–12 minutes</b>', status: 'Loading audit records...' },
-      { target: 40, label: 'Estimated time remaining: <b>8–10 minutes</b>', status: 'Analyzing exception logs...' },
-      { target: 60, label: 'Estimated time remaining: <b>5–7 minutes</b>', status: 'Running AI synthesis engine...' },
-      { target: 80, label: 'Estimated time remaining: <b>2–4 minutes</b>', status: 'Generating executive summary...' },
-      { target: 95, label: 'Estimated time remaining: <b>Under 1 minute</b>', status: 'Finalizing report layout...' },
+      { target: 20, label: 'Estimated time: <b>Under 5 seconds</b>', status: 'Loading audit records...' },
+      { target: 40, label: 'Estimated time: <b>Under 4 seconds</b>', status: 'Analyzing exception logs...' },
+      { target: 60, label: 'Estimated time: <b>Under 3 seconds</b>', status: 'Running AI synthesis engine...' },
+      { target: 80, label: 'Estimated time: <b>Under 2 seconds</b>', status: 'Generating executive summary...' },
+      { target: 95, label: 'Estimated time: <b>Under 1 second</b>', status: 'Finalizing report layout...' },
       { target: 100, label: 'Report generation complete!', status: 'Report ready ✓' },
     ];
 
@@ -204,7 +204,7 @@ function App() {
       }
 
       const phase = phases[phaseIdx];
-      current += 0.6;
+      current += 5; // make it much faster
 
       if (current >= phase.target) {
         current = phase.target;

@@ -1,5 +1,6 @@
 import os
 import io
+import urllib.request
 from datetime import datetime, date
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -101,7 +102,119 @@ def duplicate_slide(prs, source_slide):
             target_slide.shapes._spTree.insert_element_before(new_el, 'p:extLst')
     return target_slide
 
-def generate_presentation(report_name, sentinel_pool, db_config_complibear, report_type=None):
+def get_management_response_summary(conn_comp, table_name):
+    comment_columns = {
+        "bank_account_changed": "Exception",
+        "direct_changes_sap": "description",
+        "duplicate_customers": "invalid_reason",
+        "finished_goods_dispatched_wo_qi": "return_reason",
+        "gst_working": "Exception",
+        "mjot06_yield_loss": "operation_short_text",
+        "po_terms_changed": "Short Text",
+        "procurement_higher_contract": "Comment",
+        "sjin13_unplanned_delivery": "document_header_text",
+        "sjpa7_msme_penalty": "ITEM_TEXT",
+        "tds_insight": "Text",
+        "password_test": "password_status",
+    }
+    
+    # Mapping of tables to fallback exception-related code columns
+    exception_code_columns = {
+        "bank_account_changed": ["Document No", "Vendors"],
+        "cjs1_quality_rejected": ["material", "document_number"],
+        "cjsa22_foc_discount": ["billing_document", "material_number"],
+        "cjsa23_sales_return_qty": ["billing_document_number", "customer_number"],
+        "direct_changes_sap": ["user_id", "change_date"],
+        "duplicate_customers": ["customer_number"],
+        "finished_goods_dispatched_wo_qi": ["material", "sales_document"],
+        "gst_working": ["Invoice Number", "Product Code"],
+        "mjot06_yield_loss": ["material_number", "order_number"],
+        "multiple_sales_return": ["Billing Doc", "Material"],
+        "password_test": ["user_id"],
+        "po_split": ["purchase_order_number", "vendor_number"],
+        "po_terms_changed": ["Purchasing Document", "Material"],
+        "procurement_higher_contract": ["PO No", "Material Code"],
+        "reorder_level": ["material", "po_number"],
+        "sales_return_180": ["Billing Doc", "Material"],
+        "sales_return_im": ["Billing Doc", "Material"],
+        "sales_return_price_mismatch": ["Billing Doc", "Material"],
+        "scrap_sales": ["billing_document", "material_number"],
+        "sjin13_unplanned_delivery": ["po_number", "material_number"],
+        "sjpa7_msme_penalty": ["DOCUMENT_NUMBER", "VENDOR_CODE"],
+        "tds_insight": ["Document Number", "Clearing Document"],
+    }
+    
+    col_name = comment_columns.get(table_name)
+    is_fallback = False
+    
+    rows = []
+    if col_name:
+        try:
+            with conn_comp.cursor() as cur:
+                cur.execute("SET search_path TO complibear;")
+                query = f"""
+                    SELECT "{col_name}", COUNT(*) 
+                    FROM "{table_name}" 
+                    WHERE "{col_name}" IS NOT NULL AND "{col_name}" != 'NULL' AND "{col_name}" != ''
+                    GROUP BY "{col_name}"
+                    ORDER BY COUNT(*) DESC;
+                """
+                cur.execute(query)
+                rows = cur.fetchall()
+        except Exception:
+            pass
+            
+    if not rows:
+        is_fallback = True
+        candidates = exception_code_columns.get(table_name, [])
+        actual_col = None
+        try:
+            with conn_comp.cursor() as cur:
+                cur.execute("SET search_path TO complibear;")
+                cur.execute(f"SELECT * FROM \"{table_name}\" LIMIT 0;")
+                existing_cols = [desc[0] for desc in cur.description]
+                for cand in candidates:
+                    matched = next((c for c in existing_cols if c.lower() == cand.lower()), None)
+                    if matched:
+                        actual_col = matched
+                        break
+                if not actual_col and existing_cols:
+                    actual_col = existing_cols[0]
+        except Exception:
+            pass
+            
+        if actual_col:
+            col_name = actual_col
+            try:
+                with conn_comp.cursor() as cur:
+                    cur.execute("SET search_path TO complibear;")
+                    query = f"""
+                        SELECT "{col_name}", COUNT(*) 
+                        FROM "{table_name}" 
+                        WHERE "{col_name}" IS NOT NULL AND "{col_name}" != 'NULL' AND "{col_name}" != ''
+                        GROUP BY "{col_name}"
+                        ORDER BY COUNT(*) DESC;
+                    """
+                    cur.execute(query)
+                    rows = cur.fetchall()
+            except Exception:
+                pass
+                
+    if not rows:
+        return "No comments or codes available."
+        
+    summary_parts = []
+    for val, count in rows[:2]:
+        val_str = str(val).strip()
+        summary_parts.append(f"'{val_str}' ({count})")
+        
+    prefix = "Top remarks: " if not is_fallback else f"Exception codes ({col_name}): "
+    summary = prefix + ", ".join(summary_parts)
+    if len(rows) > 2:
+        summary += f" (+{len(rows) - 2} other types)"
+    return summary
+
+def generate_presentation(report_name, sentinel_pool, db_config_complibear, report_type=None, include_exceptions=False):
     # 1. Fetch data from sentinel_db (audit_plan)
     conn_sent = sentinel_pool.getconn()
     try:
@@ -198,11 +311,22 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
             }
             
             process_counts = {p: 0 for p in set(table_to_process.values())}
-            for table in tables:
-                cur.execute(f"SELECT COUNT(*) FROM \"{table}\";")
-                count = cur.fetchone()[0]
+            table_counts = {}
+            table_comments = {}
+            query = "SELECT " + ", ".join([f'(SELECT COUNT(*) FROM "{t}")' for t in tables])
+            cur.execute(query)
+            counts = cur.fetchone()
+            for i, table in enumerate(tables):
+                count = counts[i]
+                table_counts[table] = count
                 process = table_to_process[table]
                 process_counts[process] += count
+                
+                # Fetch comments if include_exceptions is True and count > 0
+                if count > 0 and include_exceptions:
+                    table_comments[table] = get_management_response_summary(conn_comp, table)
+                else:
+                    table_comments[table] = "No management response recorded."
     finally:
         conn_comp.close()
 
@@ -216,12 +340,26 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     medium_percent = (medium_count / total_count) * 100
     low_percent = (low_count / total_count) * 100
 
-    # 4. Open PPTX template
-    ppt_path = r"d:\report page\backend\Templet\Internal Audit Executive Summary  Methodology.pptx"
-    if not os.path.exists(ppt_path):
-        raise FileNotFoundError(f"PowerPoint template not found at {ppt_path}")
-
-    prs = Presentation(ppt_path)
+    # 4. Open PPTX template from Google Drive in-memory
+    google_drive_url = "https://docs.google.com/presentation/d/1N4GU6pgcQ392omaq0Xryz3mzD7HPJUQ8/export/pptx"
+    print(f"Downloading PPT template from Google Drive: {google_drive_url}...")
+    try:
+        req = urllib.request.Request(
+            google_drive_url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            ppt_data = io.BytesIO(response.read())
+        prs = Presentation(ppt_data)
+    except Exception as e:
+        print(f"Error downloading PPT template from Google Drive: {e}")
+        # Fall back to local template just in case the network is down
+        ppt_path = r"d:\report page\backend\Templet\Internal Audit Executive Summary  Methodology.pptx"
+        if os.path.exists(ppt_path):
+            print(f"Falling back to local template: {ppt_path}")
+            prs = Presentation(ppt_path)
+        else:
+            raise RuntimeError(f"Failed to fetch template online and no local backup exists: {e}")
 
     # Slide 1: Cover
     slide1 = prs.slides[0]
@@ -298,9 +436,9 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     slide6 = prs.slides[5]
 
     # Remove manual lines and empty boxes from Slide 6 (shape type 1)
-    # We keep background, title, and logo
+    # We keep background, title, logo, and footer (which is at the bottom)
     for shp in list(slide6.shapes):
-        if shp.shape_type == 1 and shp.top > Pt(100):
+        if shp.shape_type == 1 and Pt(100) < shp.top < Pt(450):
             sp = shp._element
             sp.getparent().remove(sp)
             
@@ -516,17 +654,7 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
             "risk_description": row['Risk description']
         }
         
-    # Re-connect to CompliBear to get the counts for risk profile tables
-    conn_comp = psycopg2.connect(**db_config_complibear)
-    try:
-        with conn_comp.cursor() as cur:
-            cur.execute("SET search_path TO complibear;")
-            table_counts = {}
-            for t_name in table_to_id.keys():
-                cur.execute(f'SELECT COUNT(*) FROM "{t_name}";')
-                table_counts[t_name] = cur.fetchone()[0]
-    finally:
-        conn_comp.close()
+    # Re-use table_counts from earlier query instead of re-connecting to CompliBear
         
     process_risk_counts = {}
     for t_name, count in table_counts.items():
@@ -812,7 +940,7 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     key_obs_slide_ids = []
     detailed_slide_ids = []
     
-    if report_type == "Detailed Findings Report":
+    if report_type == "Detailed Findings Report" or include_exceptions:
         # Recommendations mapping
         recommendations = {
             "bank_account_changed": "Implement dual-authorization controls for vendor bank master data changes and callback verification.",
@@ -848,7 +976,9 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                 if meta:
                     active_obs.append({
                         "insight_name": meta["insight_name"],
-                        "recommendation": recommendations.get(t_name, "Review process validation rules.")
+                        "recommendation": recommendations.get(t_name, "Review process validation rules."),
+                        "management_response": table_comments.get(t_name, "No management response recorded."),
+                        "table_name": t_name
                     })
                     
         # Key Observations Slide splitting (max 4 per slide)
@@ -871,13 +1001,21 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                     run.font.bold = True
                     run.font.color.rgb = RGBColor(30, 41, 59)
                     
+            if include_exceptions:
+                cols_count = 3
+                widths = [Pt(200), Pt(380), Pt(284)]
+                headers = ["Insight Name", "Recommendation", "Management Response"]
+            else:
+                cols_count = 2
+                widths = [Pt(240), Pt(624)]
+                headers = ["Insight Name", "Recommendation"]
+
             table_height = Pt(30) + len(chunk) * Pt(45)
-            table_shape = target_slide.shapes.add_table(len(chunk) + 1, 2, Pt(48), Pt(112), Pt(864), table_height)
+            table_shape = target_slide.shapes.add_table(len(chunk) + 1, cols_count, Pt(48), Pt(112), Pt(864), table_height)
             table = table_shape.table
-            table.columns[0].width = Pt(240)
-            table.columns[1].width = Pt(624)
+            for col_idx, w in enumerate(widths):
+                table.columns[col_idx].width = w
             
-            headers = ["Insight Name", "Recommendation"]
             for col_idx, text in enumerate(headers):
                 cell = table.cell(0, col_idx)
                 cell.text = text
@@ -923,6 +1061,19 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                 c_rec.vertical_anchor = MSO_ANCHOR.MIDDLE
                 c_rec.margin_left = Pt(10)
                 
+                if include_exceptions:
+                    c_resp = table.cell(row, 2)
+                    c_resp.text = str(obs.get("management_response", "No comments recorded."))
+                    c_resp.fill.solid()
+                    c_resp.fill.fore_color.rgb = bg_color
+                    p = c_resp.text_frame.paragraphs[0]
+                    run = p.runs[0]
+                    run.font.name = "Inter"
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor(71, 85, 105)
+                    c_resp.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    c_resp.margin_left = Pt(10)
+                
         # Detailed Observations Slide splitting (max 4 per slide)
         detailed_obs = []
         for t_name, count in table_counts.items():
@@ -934,7 +1085,8 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                     "insight_name": meta["insight_name"],
                     "risk_description": meta["risk_description"],
                     "rows": count,
-                    "risk_score": meta["risk_level"].capitalize()
+                    "risk_score": meta["risk_level"].capitalize(),
+                    "table_name": t_name
                 })
                 
         process_detailed = {}
@@ -964,21 +1116,27 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                         run.font.bold = True
                         run.font.color.rgb = RGBColor(30, 41, 59)
                         
-                table_shape = target_slide.shapes.add_table(len(chunk) + 1, 4, Pt(48), Pt(112), Pt(864), Pt(30) + len(chunk) * Pt(45))
+                if include_exceptions:
+                    cols_count = 5
+                    widths = [Pt(160), Pt(320), Pt(70), Pt(90), Pt(224)]
+                    headers = ["Insight Name", "Risk Description", "Rows", "Risk Score", "Management Response"]
+                else:
+                    cols_count = 4
+                    widths = [Pt(200), Pt(440), Pt(100), Pt(124)]
+                    headers = ["Insight Name", "Risk Description", "Rows", "Risk Score"]
+
+                table_shape = target_slide.shapes.add_table(len(chunk) + 1, cols_count, Pt(48), Pt(112), Pt(864), Pt(30) + len(chunk) * Pt(45))
                 table = table_shape.table
-                table.columns[0].width = Pt(200)
-                table.columns[1].width = Pt(440)
-                table.columns[2].width = Pt(100)
-                table.columns[3].width = Pt(124)
+                for col_idx, w in enumerate(widths):
+                    table.columns[col_idx].width = w
                 
-                headers = ["Insight Name", "Risk Description", "Rows", "Risk Score"]
                 for col_idx, text in enumerate(headers):
                     cell = table.cell(0, col_idx)
                     cell.text = text
                     cell.fill.solid()
                     cell.fill.fore_color.rgb = RGBColor(30, 41, 59)
                     p = cell.text_frame.paragraphs[0]
-                    p.alignment = PP_ALIGN.CENTER if col_idx >= 2 else PP_ALIGN.LEFT
+                    p.alignment = PP_ALIGN.CENTER if (col_idx >= 2 and not include_exceptions) or (col_idx in [2, 3] and include_exceptions) else PP_ALIGN.LEFT
                     run = p.runs[0]
                     run.font.name = "Inter"
                     run.font.size = Pt(9.5)
@@ -1050,6 +1208,20 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
                     run.font.bold = True
                     run.font.color.rgb = RGBColor(*risk_color)
                     cell_score.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    
+                    if include_exceptions:
+                        cell_resp = table.cell(row, 4)
+                        cell_resp.text = table_comments.get(obs.get("table_name"), "No management response recorded.")
+                        cell_resp.fill.solid()
+                        cell_resp.fill.fore_color.rgb = bg_color
+                        p = cell_resp.text_frame.paragraphs[0]
+                        p.alignment = PP_ALIGN.LEFT
+                        run = p.runs[0]
+                        run.font.name = "Inter"
+                        run.font.size = Pt(8.5)
+                        run.font.color.rgb = RGBColor(71, 85, 105)
+                        cell_resp.vertical_anchor = MSO_ANCHOR.MIDDLE
+                        cell_resp.margin_left = Pt(8)
 
     # Reorder slides
     xml_slides = prs.slides._sldIdLst
@@ -1073,6 +1245,28 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
         for i, sldId in enumerate(detailed_slide_ids):
             xml_slides.remove(sldId)
             xml_slides.insert(detailed_start_idx + i, sldId)
+
+    # Add created date directly onto footer of all slides
+    date_str = f"Date: {datetime.now().strftime('%d %B %Y')}"
+    for slide in prs.slides:
+        left = prs.slide_width - Pt(220)
+        top = Pt(503) # Align inside footer
+        width = Pt(200)
+        height = Pt(30)
+        txBox = slide.shapes.add_textbox(left, top, width, height)
+        tf = txBox.text_frame
+        tf.margin_left = Pt(0)
+        tf.margin_right = Pt(0)
+        tf.margin_top = Pt(0)
+        tf.margin_bottom = Pt(0)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.RIGHT
+        run = p.add_run()
+        run.text = date_str
+        run.font.name = "Inter"
+        run.font.size = Pt(16)
+        run.font.bold = True
+        run.font.color.rgb = RGBColor(255, 255, 255) # White text to stand out on the blue footer
 
     # Save to memory buffer
     out_stream = io.BytesIO()

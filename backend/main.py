@@ -67,8 +67,9 @@ def generate_ppt():
         report_name = form_data.get('reportName', 'Sentinel & Complibear Audit Report')
         
         report_type = form_data.get('reportType')
+        include_exceptions = form_data.get('includeExceptions', False)
         # Generate presentation using logic in ppt_generator
-        out_stream = generate_presentation(report_name, pool, db_config_complibear, report_type=report_type)
+        out_stream = generate_presentation(report_name, pool, db_config_complibear, report_type=report_type, include_exceptions=include_exceptions)
         
         return send_file(
             out_stream,
