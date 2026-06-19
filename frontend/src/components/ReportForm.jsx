@@ -54,13 +54,13 @@ export default function ReportForm({
   return (
     <div className="page-wrap">
       <GlassSurface
-        displace={0.8}
-        distortionScale={-250}
+        displace={0.9}
+        distortionScale={0}
         redOffset={0}
-        greenOffset={0}
-        blueOffset={0}
+        greenOffset={10}
+        blueOffset={20}
         brightness={100}
-        opacity={1}
+        opacity={9}
         mixBlendMode="normal"
         borderRadius={28}
         className="glass-container border-enabled hover-enabled"
