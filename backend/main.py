@@ -13,11 +13,12 @@ CORS(app)
 
 # Database connection configuration as requested
 db_config = {
-    "host": "192.168.1.66",
+    "host": "ep-fragrant-dawn-at7nzvqv-pooler.c-9.us-east-1.aws.neon.tech",
     "port": 5432,
-    "user": "postgres",
-    "password": "postgres",
-    "database": "sentinel_db"
+    "user": "neondb_owner",
+    "password": "npg_5wQeyoh4pxFT",
+    "database": "neondb",
+    "sslmode": "require"
 }
 
 # Create PostgreSQL connection pool
@@ -36,6 +37,7 @@ def get_audits():
         conn = pool.getconn()
         # Use RealDictCursor to map query columns as keys in the response dictionaries
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET search_path TO sentinel_db;")
             cur.execute("SELECT * FROM audit_plan;")
             rows = cur.fetchall()
             return jsonify(rows)
@@ -49,11 +51,12 @@ def get_audits():
 
 # Configuration for complibear database
 db_config_complibear = {
-    "host": "192.168.1.66",
+    "host": "ep-fragrant-dawn-at7nzvqv-pooler.c-9.us-east-1.aws.neon.tech",
     "port": 5432,
-    "user": "postgres",
-    "password": "postgres",
-    "database": "complibear"
+    "user": "neondb_owner",
+    "password": "npg_5wQeyoh4pxFT",
+    "database": "neondb",
+    "sslmode": "require"
 }
 
 @app.route('/api/generate-ppt', methods=['POST'])
@@ -83,6 +86,7 @@ if __name__ == '__main__':
     try:
         conn = pool.getconn()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET search_path TO sentinel_db;")
             cur.execute("SELECT * FROM audit_plan LIMIT 1;")
             row = cur.fetchone()
             print("Successfully connected to PostgreSQL database: sentinel_db")
@@ -99,7 +103,7 @@ if __name__ == '__main__':
             else:
                 print("audit_plan table is empty")
     except Exception as e:
-        print(f"Error connecting to sentinel_db on 192.168.1.66: {e}", file=sys.stderr)
+        print(f"Error connecting to sentinel_db on Neon: {e}", file=sys.stderr)
     finally:
         if conn:
             pool.putconn(conn)

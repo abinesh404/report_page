@@ -10,21 +10,23 @@ databases = [
     {
         "name": "complibear",
         "config": {
-            "host": "192.168.1.66",
+            "host": "ep-fragrant-dawn-at7nzvqv-pooler.c-9.us-east-1.aws.neon.tech",
             "port": 5432,
-            "user": "postgres",
-            "password": "postgres",
-            "database": "complibear"
+            "user": "neondb_owner",
+            "password": "npg_5wQeyoh4pxFT",
+            "database": "neondb",
+            "sslmode": "require"
         }
     },
     {
         "name": "sentinel_db",
         "config": {
-            "host": "192.168.1.66",
+            "host": "ep-fragrant-dawn-at7nzvqv-pooler.c-9.us-east-1.aws.neon.tech",
             "port": 5432,
-            "user": "postgres",
-            "password": "postgres",
-            "database": "sentinel_db"
+            "user": "neondb_owner",
+            "password": "npg_5wQeyoh4pxFT",
+            "database": "neondb",
+            "sslmode": "require"
         }
     }
 ]

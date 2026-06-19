@@ -106,6 +106,7 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     conn_sent = sentinel_pool.getconn()
     try:
         with conn_sent.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET search_path TO sentinel_db;")
             cur.execute("""
                 SELECT id, title, risk_level, "rick score" as risk_score, process, auditor, company, sector, start_date, end_date, control_description 
                 FROM audit_plan;
@@ -154,6 +155,7 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     conn_comp = psycopg2.connect(**db_config_complibear)
     try:
         with conn_comp.cursor() as cur:
+            cur.execute("SET search_path TO complibear;")
             tables = [
                 "bank_account_changed", "cjs1_quality_rejected", "cjsa22_foc_discount",
                 "cjsa23_sales_return_qty", "direct_changes_sap", "duplicate_customers",
@@ -470,6 +472,7 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     conn_sent = sentinel_pool.getconn()
     try:
         with conn_sent.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET search_path TO sentinel_db;")
             cur.execute('SELECT * FROM ref_audit_plan;')
             rows_ref = cur.fetchall()
             excel_df = pd.DataFrame(rows_ref)
@@ -517,6 +520,7 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     conn_comp = psycopg2.connect(**db_config_complibear)
     try:
         with conn_comp.cursor() as cur:
+            cur.execute("SET search_path TO complibear;")
             table_counts = {}
             for t_name in table_to_id.keys():
                 cur.execute(f'SELECT COUNT(*) FROM "{t_name}";')
