@@ -1,24 +1,24 @@
 import React from 'react';
 
-export default function ProgressBar({ progress, statusText, labelHtml, show }) {
+export default function ProgressBar({ progress, statusText, labelHtml, show, isCompleted, hasError }) {
   if (!show) return null;
+
+  const barClass = hasError ? 'prog-fill prog-fill-error' : isCompleted ? 'prog-fill prog-fill-done' : 'prog-fill';
 
   return (
     <div className="prog-section show">
       <div className="gen-status">
-        <div className="orb" id="genOrb"></div>
-        <span id="genStatusText">{statusText}</span>
+        <div className={`orb ${isCompleted ? 'orb-done' : hasError ? 'orb-error' : 'orb-active'}`}></div>
+        <span>{statusText}</span>
       </div>
       <div className="prog-track">
-        <div className="prog-fill" id="progFill" style={{ width: `${progress}%` }}>
-          <span className="prog-pct" id="progPct">{Math.round(progress)}%</span>
+        <div className={barClass} style={{ width: `${progress}%` }}>
+          {progress > 8 && (
+            <span className="prog-pct">{Math.round(progress)}%</span>
+          )}
         </div>
       </div>
-      <p 
-        className="prog-label" 
-        id="progLabel"
-        dangerouslySetInnerHTML={{ __html: labelHtml }}
-      />
+      <p className="prog-label">{labelHtml}</p>
     </div>
   );
 }

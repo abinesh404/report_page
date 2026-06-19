@@ -15,6 +15,9 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 import pandas as pd
 import numpy as np
 
+# Module-level cache for the Google Drive PPT template (downloaded once, reused)
+_template_cache = None
+
 def format_date_long(val):
     if not val:
         return "N/A"
@@ -258,26 +261,32 @@ def generate_presentation(report_name, sentinel_pool, db_config_complibear, repo
     medium_percent = (medium_count / total_count) * 100
     low_percent = (low_count / total_count) * 100
 
-    # 4. Open PPTX template from Google Drive in-memory
-    google_drive_url = "https://docs.google.com/presentation/d/1N4GU6pgcQ392omaq0Xryz3mzD7HPJUQ8/export/pptx"
-    print(f"Downloading PPT template from Google Drive: {google_drive_url}...")
-    try:
-        req = urllib.request.Request(
-            google_drive_url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        )
-        with urllib.request.urlopen(req, timeout=10) as response:
-            ppt_data = io.BytesIO(response.read())
-        prs = Presentation(ppt_data)
-    except Exception as e:
-        print(f"Error downloading PPT template from Google Drive: {e}")
-        # Fall back to local template just in case the network is down
-        ppt_path = r"d:\report page\backend\Templet\Internal Audit Executive Summary  Methodology.pptx"
-        if os.path.exists(ppt_path):
-            print(f"Falling back to local template: {ppt_path}")
-            prs = Presentation(ppt_path)
-        else:
-            raise RuntimeError(f"Failed to fetch template online and no local backup exists: {e}")
+    # 4. Open PPTX template from Google Drive in-memory (cached after first download)
+    global _template_cache
+    if _template_cache is None:
+        google_drive_url = "https://docs.google.com/presentation/d/1N4GU6pgcQ392omaq0Xryz3mzD7HPJUQ8/export/pptx"
+        print(f"Downloading PPT template from Google Drive: {google_drive_url}...")
+        try:
+            req = urllib.request.Request(
+                google_drive_url, 
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            with urllib.request.urlopen(req, timeout=15) as response:
+                _template_cache = response.read()
+            print("Template cached in memory for future requests.")
+        except Exception as e:
+            print(f"Error downloading PPT template from Google Drive: {e}")
+            ppt_path = r"d:\report page\backend\Templet\Internal Audit Executive Summary  Methodology.pptx"
+            if os.path.exists(ppt_path):
+                print(f"Falling back to local template: {ppt_path}")
+                with open(ppt_path, 'rb') as f:
+                    _template_cache = f.read()
+            else:
+                raise RuntimeError(f"Failed to fetch template online and no local backup exists: {e}")
+    else:
+        print("Using cached PPT template (skipping download).")
+    
+    prs = Presentation(io.BytesIO(_template_cache))
 
     # Slide 1: Cover
     slide1 = prs.slides[0]

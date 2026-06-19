@@ -1,45 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Background from './components/Background';
 import Navigation from './components/Navigation';
 import ReportForm from './components/ReportForm';
-import ProgressBar from './components/ProgressBar';
-
-// Helper to download a beautifully styled HTML report containing the 6 requested sections
-const downloadHtmlReport = (formData, matchingRows, auditNameText, selectedAudit) => {
-  const company = selectedAudit?.company || selectedAudit?.Company || 'CJSJ';
-  const sector = selectedAudit?.sector || selectedAudit?.Sector || 'Manufacturing';
-
-  fetch('http://localhost:4004/api/generate-ppt', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      formData,
-      auditNameText,
-      company,
-      sector
-    }),
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error('Failed to generate PowerPoint report');
-      return res.blob();
-    })
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${formData.reportName || 'Audit_Report'}.pptx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    })
-    .catch((err) => {
-      console.error(err);
-      alert('Failed to generate report. Please check if the backend is running on port 4004.');
-    });
-};;
 
 function App() {
   const [formData, setFormData] = useState({
@@ -57,11 +19,13 @@ function App() {
   const [audits, setAudits] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [currentPhaseText, setCurrentPhaseText] = useState('Synthesizing audit data...');
-  const [currentLabelText, setCurrentLabelText] = useState('Estimated time remaining: <b>10–12 minutes</b>');
+  const [currentPhaseText, setCurrentPhaseText] = useState('');
+  const [currentLabelText, setCurrentLabelText] = useState('');
+  const progressIntervalRef = useRef(null);
+  const abortRef = useRef(null);
 
-  // Helper function to format date strings to "DD – MM – YYYY"
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const d = new Date(dateString);
@@ -70,10 +34,8 @@ function App() {
     return `${pad(d.getDate())} – ${pad(d.getMonth() + 1)} – ${d.getFullYear()}`;
   };
 
-  // Helper function to auto-fill form data from database row fields
   const autoFillFromAudit = (auditRow) => {
     if (!auditRow) return;
-
     const getVal = (possibleKeys) => {
       const matchedKey = possibleKeys.find(
         (pk) => Object.keys(auditRow).some((k) => k.toLowerCase() === pk.toLowerCase())
@@ -84,8 +46,6 @@ function App() {
 
     const timelineStart = formatDate(getVal(['timeline_start', 'timeline_start_date', 'timelineStart', 'start_date']));
     const timelineEnd = formatDate(getVal(['timeline_end', 'timeline_end_date', 'timelineEnd', 'end_date']));
-
-    // Fallback logic if specific audit_plan / report_name columns are empty or not in DB schema
     const titleVal = getVal(['title']);
     const processVal = getVal(['process']);
     const auditPlan = getVal(['audit_type', 'auditType']) || getVal(['audit_plan', 'auditPlan', 'plan_name']) || titleVal || processVal || 'Annual Internal Audit Plan';
@@ -102,19 +62,15 @@ function App() {
     }));
   };
 
-  // Fetch PostgreSQL records on mount
   useEffect(() => {
     fetch('http://localhost:4004/api/audits')
       .then((res) => {
         if (!res.ok) throw new Error('Database server not reachable');
         return res.json();
       })
-      .then((data) => {
-        setAudits(data);
-      })
+      .then((data) => setAudits(data))
       .catch((err) => {
         console.error('Failed to load audits from PostgreSQL:', err.message);
-        // Fallback placeholder options if database is empty/unreachable
         const fallback = [
           { plan_db_id: 1, id: '1', audit_name: 'Q4 Treasury Audit FY25', timeline_start: '31 – 03 – 2025', timeline_end: '30 – 03 – 2026', audit_plan: 'Annual Internal Audit Plan', title: 'Q4 Treasury' },
           { plan_db_id: 2, id: '2', audit_name: 'Q1 Compliance Audit FY26', timeline_start: '01 – 04 – 2025', timeline_end: '30 – 06 – 2025', audit_plan: 'Quarterly compliance program', title: 'Q1 Compliance' },
@@ -125,31 +81,93 @@ function App() {
   }, []);
 
   const handleFormChange = (name, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value
-    }));
-
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (name === 'auditName') {
       const selected = audits.find((a) => {
         const nameKey = Object.keys(a).find((key) => key.toLowerCase() === 'audit_name') || 'audit_name';
         return String(a[nameKey]) === value;
       });
-      if (selected) {
-        autoFillFromAudit(selected);
-      }
+      if (selected) autoFillFromAudit(selected);
     }
   };
 
-  const handleBack = () => {
-    alert('Navigating Back...');
-  };
+  const handleBack = () => alert('Navigating Back...');
+  const handleLogout = () => alert('Logging out...');
 
-  const handleLogout = () => {
-    alert('Logging out...');
-  };
+  // Phases shown during progress — the bar climbs to 85% during the API call,
+  // then jumps to 100% only when the response blob is received.
+  const phases = [
+    { at: 5,  status: 'Connecting to server…',              label: 'Initializing report engine' },
+    { at: 15, status: 'Loading audit records…',              label: 'Querying database' },
+    { at: 30, status: 'Analyzing exception logs…',           label: 'Processing compliance data' },
+    { at: 45, status: 'Running AI synthesis engine…',        label: 'Generating insights' },
+    { at: 60, status: 'Generating executive summary…',       label: 'Building presentation slides' },
+    { at: 75, status: 'Finalizing report layout…',           label: 'Rendering charts & tables' },
+    { at: 85, status: 'Compiling PowerPoint…',               label: 'Almost there' },
+  ];
 
-  const startGeneration = () => {
+  const startProgressSimulation = useCallback(() => {
+    let tick = 0;
+    let currentProg = 0;
+    const speed = 120; // ms per tick
+
+    progressIntervalRef.current = setInterval(() => {
+      tick++;
+      // Ease toward 85% over ~10 seconds, never exceeding 85
+      const target = 85;
+      const elapsed = tick * speed;
+      const t = Math.min(elapsed / 10000, 1); // 0→1 over 10s
+      currentProg = target * (1 - Math.pow(1 - t, 2.5)); // ease-out curve
+
+      // Determine which phase to show
+      const phase = [...phases].reverse().find(p => currentProg >= p.at) || phases[0];
+      setProgress(Math.min(Math.round(currentProg), 85));
+      setCurrentPhaseText(phase.status);
+      setCurrentLabelText(phase.label);
+    }, speed);
+  }, []);
+
+  const stopProgressSimulation = useCallback(() => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  }, []);
+
+  const triggerDownload = useCallback(async (fd) => {
+    const selectedAudit = audits.find((a) => {
+      const idKey = Object.keys(a).find((key) => key.toLowerCase() === 'id') || 'id';
+      const dbIdKey = Object.keys(a).find((key) => key.toLowerCase() === 'plan_db_id') || 'plan_db_id';
+      const nameKey = Object.keys(a).find((key) => key.toLowerCase() === 'audit_name') || 'audit_name';
+      return String(a[idKey]) === fd.auditName || String(a[dbIdKey]) === fd.auditName || String(a[nameKey]) === fd.auditName;
+    });
+    const company = selectedAudit?.company || selectedAudit?.Company || 'CJSJ';
+    const sector = selectedAudit?.sector || selectedAudit?.Sector || 'Manufacturing';
+    const auditNameText = selectedAudit?.audit_name || 'N/A';
+
+    abortRef.current = new AbortController();
+
+    const res = await fetch('http://localhost:4004/api/generate-ppt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formData: fd, auditNameText, company, sector }),
+      signal: abortRef.current.signal,
+    });
+
+    if (!res.ok) throw new Error('Server returned an error');
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fd.reportName || 'Audit_Report'}.pptx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [audits]);
+
+  const startGeneration = async () => {
     const isFormValid = !!(
       formData.auditName &&
       formData.reportName &&
@@ -159,99 +177,69 @@ function App() {
       formData.reportType &&
       formData.auditPlan
     );
-    if (!isFormValid) {
-      return;
-    }
+    if (!isFormValid) return;
 
+    // If already completed, just re-download
     if (isCompleted) {
-      const selectedAudit = audits.find((a) => {
-        const idKey = Object.keys(a).find((key) => key.toLowerCase() === 'id') || 'id';
-        const dbIdKey = Object.keys(a).find((key) => key.toLowerCase() === 'plan_db_id') || 'plan_db_id';
-        const nameKey = Object.keys(a).find((key) => key.toLowerCase() === 'audit_name') || 'audit_name';
-        return String(a[idKey]) === formData.auditName || String(a[dbIdKey]) === formData.auditName || String(a[nameKey]) === formData.auditName;
-      });
-      const auditNameText = selectedAudit?.audit_name || 'N/A';
-      const matchingRows = audits.filter((a) => {
-        const nameKey = Object.keys(a).find((key) => key.toLowerCase() === 'audit_name') || 'audit_name';
-        return String(a[nameKey]) === auditNameText;
-      });
-      downloadHtmlReport(formData, matchingRows, auditNameText, selectedAudit);
+      try { await triggerDownload(formData); } catch (e) { console.error(e); }
       return;
     }
 
+    // Reset state
     setIsGenerating(true);
-    setProgress(0);
     setIsCompleted(false);
-    setCurrentPhaseText('Starting generation...');
-    setCurrentLabelText('Estimated time: <b>Under 5 seconds</b>');
+    setHasError(false);
+    setProgress(0);
+    setCurrentPhaseText('Connecting to server…');
+    setCurrentLabelText('Initializing report engine');
 
-    const phases = [
-      { target: 20, label: 'Estimated time: <b>Under 5 seconds</b>', status: 'Loading audit records...' },
-      { target: 40, label: 'Estimated time: <b>Under 4 seconds</b>', status: 'Analyzing exception logs...' },
-      { target: 60, label: 'Estimated time: <b>Under 3 seconds</b>', status: 'Running AI synthesis engine...' },
-      { target: 80, label: 'Estimated time: <b>Under 2 seconds</b>', status: 'Generating executive summary...' },
-      { target: 95, label: 'Estimated time: <b>Under 1 second</b>', status: 'Finalizing report layout...' },
-      { target: 100, label: 'Report generation complete!', status: 'Report ready ✓' },
-    ];
+    // Start progress simulation (climbs to 85%)
+    startProgressSimulation();
 
-    let current = 0;
-    let phaseIdx = 0;
+    try {
+      await triggerDownload(formData);
 
-    const interval = setInterval(() => {
-      if (phaseIdx >= phases.length) {
-        clearInterval(interval);
-        return;
+      // API returned! Jump to 100%
+      stopProgressSimulation();
+      setProgress(100);
+      setCurrentPhaseText('Report ready ✓');
+      setCurrentLabelText('Download started automatically');
+      setIsCompleted(true);
+    } catch (err) {
+      stopProgressSimulation();
+      if (err.name !== 'AbortError') {
+        console.error(err);
+        setProgress(0);
+        setCurrentPhaseText('Generation failed');
+        setCurrentLabelText('Please check backend and try again');
+        setHasError(true);
+        setIsGenerating(false);
       }
+    }
+  };
 
-      const phase = phases[phaseIdx];
-      current += 5; // make it much faster
-
-      if (current >= phase.target) {
-        current = phase.target;
-        setCurrentPhaseText(phase.status);
-        setCurrentLabelText(phase.label);
-        phaseIdx++;
-
-        if (current === 100) {
-          clearInterval(interval);
-          setIsCompleted(true);
-
-          // Trigger download automatically
-          const selectedAudit = audits.find((a) => {
-            const idKey = Object.keys(a).find((key) => key.toLowerCase() === 'id') || 'id';
-            const dbIdKey = Object.keys(a).find((key) => key.toLowerCase() === 'plan_db_id') || 'plan_db_id';
-            const nameKey = Object.keys(a).find((key) => key.toLowerCase() === 'audit_name') || 'audit_name';
-            return String(a[idKey]) === formData.auditName || String(a[dbIdKey]) === formData.auditName || String(a[nameKey]) === formData.auditName;
-          });
-          const auditNameText = selectedAudit?.audit_name || 'N/A';
-          const matchingRows = audits.filter((a) => {
-            const nameKey = Object.keys(a).find((key) => key.toLowerCase() === 'audit_name') || 'audit_name';
-            return String(a[nameKey]) === auditNameText;
-          });
-          downloadHtmlReport(formData, matchingRows, auditNameText, selectedAudit);
-        }
-      }
-
-      setProgress(current);
-    }, 40);
+  const handleReset = () => {
+    setIsGenerating(false);
+    setIsCompleted(false);
+    setHasError(false);
+    setProgress(0);
+    setCurrentPhaseText('');
+    setCurrentLabelText('');
   };
 
   return (
     <>
-      {/* Background world */}
       <Background />
-
-      {/* Navigation */}
       <Navigation onBack={handleBack} onLogout={handleLogout} />
-
-      {/* Main Form and Card */}
       <ReportForm
         formData={formData}
         audits={audits}
         onChange={handleFormChange}
         onGenerate={startGeneration}
+        onReset={handleReset}
         isGenerating={isGenerating}
         isCompleted={isCompleted}
+        hasError={hasError}
         progress={progress}
         statusText={currentPhaseText}
         labelHtml={currentLabelText}
