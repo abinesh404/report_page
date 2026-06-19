@@ -1,18 +1,19 @@
 import React from 'react';
-import PlasmaWave from './PlasmaWave';
+import Particles from './Particles';
 
 export default function Background() {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', background: '#080610' }}>
-      <PlasmaWave
-        colors={["#A855F7", "#06B6D4"]}
-        speed1={0.05}
-        speed2={0.05}
-        focalLength={0.8}
-        bend1={1}
-        bend2={0.5}
-        dir2={1}
-        rotationDeg={0}
+      <Particles
+        particleColors={["#ffffff"]}
+        particleCount={200}
+        particleSpread={10}
+        speed={0.1}
+        particleBaseSize={100}
+        moveParticlesOnHover={true}
+        alphaParticles={false}
+        disableRotation={false}
+        pixelRatio={1}
       />
     </div>
   );

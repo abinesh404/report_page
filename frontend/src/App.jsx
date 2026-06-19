@@ -3,6 +3,8 @@ import Background from './components/Background';
 import Navigation from './components/Navigation';
 import ReportForm from './components/ReportForm';
 
+import ClickSpark from './components/ClickSpark';
+
 function App() {
   const [formData, setFormData] = useState({
     auditName: '',
@@ -228,7 +230,13 @@ function App() {
   };
 
   return (
-    <>
+    <ClickSpark
+      sparkColor="#ffffff"
+      sparkSize={10}
+      sparkRadius={15}
+      sparkCount={8}
+      duration={400}
+    >
       <Background />
       <Navigation onBack={handleBack} onLogout={handleLogout} />
       <ReportForm
@@ -244,7 +252,7 @@ function App() {
         statusText={currentPhaseText}
         labelHtml={currentLabelText}
       />
-    </>
+    </ClickSpark>
   );
 }
 

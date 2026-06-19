@@ -13,7 +13,7 @@ export const GlassSurface = memo(({
   blueOffset = 0,
   brightness = 100,
   opacity = 1,
-  blur = 10000,
+  blur = 5,
   mixBlendMode = 'normal',
   style = {},
   ...props
@@ -21,9 +21,10 @@ export const GlassSurface = memo(({
   const baseId = useId();
   const filterId = `glass-distortion-${baseId.replace(/:/g, '')}`;
 
-  const finalRedScale = (distortionScale + redOffset) * displace;
-  const finalGreenScale = (distortionScale + greenOffset) * displace;
-  const finalBlueScale = (distortionScale + blueOffset) * displace;
+  // Reduced displacement values to prevent edge noise/artifacts
+  const finalRedScale = (distortionScale + redOffset) * displace * 0.35;
+  const finalGreenScale = (distortionScale + greenOffset) * displace * 0.35;
+  const finalBlueScale = (distortionScale + blueOffset) * displace * 0.35;
 
   return (
     <div
@@ -37,19 +38,19 @@ export const GlassSurface = memo(({
       }}
       {...props}
     >
-      {/* SVG filter container for displacement and chromatic aberration */}
+      {/* SVG filter — tamed turbulence to avoid edge noise */}
       <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }}>
         <defs>
-          <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
-            {/* Generate low-frequency noise for smooth glass lens refraction */}
+          <filter id={filterId} x="0%" y="0%" width="100%" height="100%" colorInterpolationFilters="sRGB">
+            {/* Lower frequency + more blur = smoother glass, no edge noise */}
             <feTurbulence
               type="fractalNoise"
-              baseFrequency="0.003 0.003"
+              baseFrequency="0.002 0.002"
               numOctaves="1"
               seed="42"
               result="noise"
             />
-            <feGaussianBlur in="noise" stdDeviation="5.0" result="blurredNoise" />
+            <feGaussianBlur in="noise" stdDeviation="8.0" result="blurredNoise" />
 
             {/* Red Channel Displacement */}
             <feColorMatrix in="SourceGraphic" type="matrix" values="
@@ -116,11 +117,12 @@ export const GlassSurface = memo(({
         style={{
           backdropFilter: `blur(${blur}px) saturate(1.8) brightness(1.05)`,
           WebkitBackdropFilter: `blur(${blur}px) saturate(1.8) brightness(1.05)`,
-          background: 'rgba(255, 255, 255, 0.05)',
+          background: 'rgba(255, 255, 255, 0.03)',
           filter: `url(#${filterId})`,
           mixBlendMode,
           pointerEvents: 'none',
-          borderRadius: 'inherit'
+          borderRadius: 'inherit',
+          overflow: 'hidden'
         }}
       />
 
